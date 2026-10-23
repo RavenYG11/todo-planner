@@ -546,3 +546,84 @@ PDF…", "‹ Ubah Periode / Kategori".
   signature + badging + isi dex. Varian header 4 fase, fidelity desain,
   reset nada, dan tampilan PDF baru terbukti setelah Rama meng-install
   APK ini dan mengujinya di HP-nya.
+
+## Signing — Keystore Permanen (Ronde 3b / #88, 24 Okt 2026)
+
+### Insiden yang melatarbelakangi
+APK ronde 3 tidak bisa di-update di HP (wajib install ulang) karena
+tanda tangannya BERBEDA dari ronde 1–2. Akar masalah terverifikasi:
+keystore debug lama tidak pernah tersimpan persisten di disk (pencarian
+seluruh filesystem: tidak ada `debug.keystore`), sehingga build ronde 3
+terbit dengan kunci baru (cert APK ronde 3 = `3bd3e868...`). Android
+menolak update bila signature berbeda dari aplikasi yang sudah terpasang.
+Kunci ronde 1–2 hilang permanen — satu kali install ulang tidak
+terhindarkan — tetapi insiden ini TIDAK BOLEH terulang; solusinya adalah
+keystore permanen di bawah ini.
+
+### Keystore permanen — lokasi & aturan keras
+- **Lokasi:** `~/workspace/todo-planner/keystore/todo-planner.keystore`
+  — folder ini berada **DI LUAR repo git** (root repo adalah folder
+  `app/` ini). Alias: `todoplanner`.
+- **Cert SHA-256:** `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+- **Password:** tersimpan HANYA di
+  `~/workspace/todo-planner/keystore/keystore-info.txt` (izin file 600),
+  di folder yang sama dengan keystore — juga di luar repo.
+- **ATURAN KERAS:**
+  1. JANGAN PERNAH menghapus file keystore ini. Bila hilang, semua update
+     di HP akan kembali gagal total seperti insiden ronde 3.
+  2. JANGAN PERNAH memindah/menyalin keystore ke dalam repo, dan JANGAN
+     PERNAH meng-commit-nya (juga jangan commit `keystore.properties`
+     maupun password-nya) ke GitHub atau tempat publik mana pun.
+  3. Semua build Todo Planner selamanya WAJIB ditandatangani kunci ini.
+
+### Mekanisme di build (app/build.gradle.kts)
+- Di root proyek ada file **lokal** `keystore.properties` (sudah masuk
+  `.gitignore`, jangan commit) berisi:
+  `storeFile=../keystore/todo-planner.keystore`, `storePassword`,
+  `keyPassword` (keduanya dibaca dari `keystore-info.txt`), dan
+  `keyAlias=todoplanner`. Path `storeFile` relatif terhadap root proyek.
+- `app/build.gradle.kts` membaca file itu **hanya bila ada**: bila ada,
+  dibuat `signingConfigs` bernama `permanent` dari isinya dan dipakai
+  untuk buildTypes **debug DAN release**. Password TIDAK PERNAH
+  hardcoded di `build.gradle.kts` (file itu ter-push ke repo publik).
+- **Fallback:** bila `keystore.properties` tidak ada (mis. build GitHub
+  Actions yang tidak punya akses keystore lokal), build memakai signing
+  debug bawaan Android seperti biasa — build tetap jalan. APK hasil
+  fallback TIDAK bisa meng-update APK bertanda tangan permanen (dan
+  sebaliknya); untuk rilis ke HP Rama selalu pakai build lokal berkunci
+  permanen.
+
+### Riwayat versi
+| versionCode | versionName | Keterangan |
+|---|---|---|
+| 1 | 1.0 | Rilis awal (#83) + perbaikan ronde 1 (#85), ronde 2 (#86), ronde 3 (#87) — signing debug tidak persisten (insiden di atas) |
+| 2 | 1.0.1 | Ronde 3b (#88): isi kode = ronde 3, signing diganti keystore permanen |
+
+### Hasil build ronde 3b (#88)
+- **Status: BERHASIL — `BUILD SUCCESSFUL`** (Gradle 8.7 offline,
+  `assembleDebug` di folder proyek asli di VM ini).
+- **APK debug baru:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **16.936.408 byte (±16,2 MB)**, sha256
+  `09fe82fd20ee930074c296f64d556db2e0da3132f9e9f14fc0018ba0e6fcdcaa`;
+  salinan praktis `../TodoPlanner-debug.apk` sudah ditimpa (hash sama).
+- **Gerbang penerimaan LOLOS:** `apksigner verify --print-certs` pada APK
+  final → Signer #1 certificate SHA-256 digest =
+  `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+  — **SAMA PERSIS** dengan cert keystore permanen di atas. File keystore
+  terverifikasi masih ada sesudah build; integritas zip APK utuh
+  (157 entri, `testzip` bersih); package `id.rama.todoplanner`
+  versionCode **2** / versionName **1.0.1**, minSdk 26, targetSdk 34;
+  permission **tetap TANPA INTERNET** (POST_NOTIFICATIONS,
+  SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED, VIBRATE,
+  FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK, WAKE_LOCK,
+  WRITE_EXTERNAL_STORAGE maxSdk 28).
+- **File berubah ronde 3b:** `app/build.gradle.kts` (signingConfigs
+  `permanent` + fallback, versionCode 1→2, versionName 1.0→1.0.1),
+  `.gitignore` (+`keystore.properties`), `README.md` (bab ini), dan file
+  lokal baru `keystore.properties` di root proyek (tidak di-commit).
+- **Catatan jujur untuk install pertama versi ini:** karena kunci ronde
+  1–2 hilang, APK v1.0.1 berkunci permanen ini tetap memerlukan SATU KALI
+  uninstall+install bersih di HP (selamatkan data dulu lewat Backup JSON
+  di Pengaturan bila perlu). Mulai dari versi inilah setiap update
+  berikutnya bisa langsung ditimpa tanpa uninstall, selama keystore
+  permanen di atas tidak hilang.

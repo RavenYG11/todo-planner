@@ -1,8 +1,24 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+}
+
+// --- Signing permanen (ronde 3b / #88) -------------------------------------
+// Bila file keystore.properties ada di root proyek (lokal, TIDAK di-commit),
+// semua build (debug & release) ditandatangani dengan keystore permanen di
+// luar repo agar update di HP selalu bisa di-install tanpa uninstall.
+// Bila file tidak ada (mis. GitHub Actions), fallback ke signing debug bawaan.
+// Password TIDAK PERNAH ditulis di file ini (file ini ter-push ke repo publik).
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+val usePermanentSigning = keystorePropertiesFile.exists()
+if (usePermanentSigning) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -13,14 +29,33 @@ android {
         applicationId = "id.rama.todoplanner"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.0.1"
+    }
+
+    signingConfigs {
+        if (usePermanentSigning) {
+            create("permanent") {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            if (usePermanentSigning) {
+                signingConfig = signingConfigs.getByName("permanent")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (usePermanentSigning) {
+                signingConfig = signingConfigs.getByName("permanent")
+            }
         }
     }
     compileOptions {
