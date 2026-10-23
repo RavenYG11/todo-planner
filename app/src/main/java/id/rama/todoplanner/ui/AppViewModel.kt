@@ -47,6 +47,22 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
     private val _profile = MutableStateFlow(readProfile())
     val profile: StateFlow<ProfileState> = _profile.asStateFlow()
 
+    /**
+     * RONDE 4 — permintaan buka Detail dari notifikasi reminder
+     * (fullScreenIntent): (activityId, dateEpochDay). Diisi MainActivity dari
+     * intent, dikonsumsi TodoApp sekali lalu dibersihkan.
+     */
+    private val _pendingDetail = MutableStateFlow<Pair<Long, Long>?>(null)
+    val pendingDetail: StateFlow<Pair<Long, Long>?> = _pendingDetail.asStateFlow()
+
+    fun requestOpenDetail(activityId: Long, dateEpochDay: Long) {
+        _pendingDetail.value = activityId to dateEpochDay
+    }
+
+    fun consumePendingDetail() {
+        _pendingDetail.value = null
+    }
+
     private fun readProfile() = ProfileState(
         name = prefs.userName, colorIndex = prefs.avatarColorIndex, emoji = prefs.avatarEmoji,
         photoPath = prefs.avatarPhotoPath,

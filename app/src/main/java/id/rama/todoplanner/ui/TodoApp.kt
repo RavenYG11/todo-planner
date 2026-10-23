@@ -124,6 +124,16 @@ fun TodoApp(vm: AppViewModel) {
     // kegiatan lama (dibuat sebelum update) ikut pindah ke skema alarm terbaru.
     LaunchedEffect(Unit) { vm.rescheduleAllReminders() }
 
+    // RONDE 4: notifikasi reminder (fullScreenIntent / ketukan) meminta buka
+    // Detail kegiatan — navigasi ke Detail lalu permintaan dibersihkan.
+    val pendingDetail by vm.pendingDetail.collectAsState()
+    LaunchedEffect(pendingDetail) {
+        pendingDetail?.let { (activityId, epochDay) ->
+            navigate(Screen.Detail(activityId, epochDay))
+            vm.consumePendingDetail()
+        }
+    }
+
     Scaffold(
         bottomBar = {
             if (screen !is Screen.Form && screen !is Screen.PdfPreview) {

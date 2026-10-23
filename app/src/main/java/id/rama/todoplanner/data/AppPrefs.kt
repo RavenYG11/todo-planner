@@ -44,6 +44,17 @@ class AppPrefs(context: Context) {
         get() = sp.getString("theme_mode", "Terang") ?: "Terang"
         set(v) = sp.edit().putString("theme_mode", v).apply()
 
+    /**
+     * RONDE 4 — hasil upaya getar TERAKHIR dari ReminderSoundPlayer, disimpan
+     * apa adanya (sukses/gagal + pesan exception + hasVibrator + jam) supaya
+     * uji HP berikutnya berbasis BUKTI, bukan tebakan. Ditampilkan sebagai
+     * baris diagnostik kecil di layar Reminder & Pengaturan.
+     * Kosong = belum pernah ada upaya getar sejak update ini.
+     */
+    var vibrationDiagnostic: String
+        get() = sp.getString("vibration_diagnostic", "") ?: ""
+        set(v) = sp.edit().putString("vibration_diagnostic", v).apply()
+
     companion object {
         const val RINGTONE_SILENT = "silent"
 
