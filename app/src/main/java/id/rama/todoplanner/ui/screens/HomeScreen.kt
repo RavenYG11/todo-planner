@@ -37,7 +37,7 @@ import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.domain.DayPhase
 import id.rama.todoplanner.domain.Occurrence
 import id.rama.todoplanner.domain.occurrencesBetween
-import id.rama.todoplanner.domain.reminderDateTime
+import id.rama.todoplanner.domain.nextReminders
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.Screen
 import id.rama.todoplanner.ui.components.AvatarView
@@ -88,13 +88,10 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
             .sortedWith(compareBy({ if ((it.activity.startMinutes ?: 0) >= nowMin) 0 else 1 }, { it.activity.startMinutes ?: 0 }))
             .take(2)
     }
+    // RONDE 4: SATU entri per kegiatan (kemunculan berikutnya saja) — dulu
+    // ekspansi 14 hari membuat kegiatan harian mendominasi daftar.
     val upcomingReminders = remember(activities, now) {
-        activities.flatMap { a ->
-            (0..13).mapNotNull { off ->
-                val d = today.plusDays(off.toLong())
-                a.reminderDateTime(d)?.let { t -> Triple(a, d, t) }
-            }
-        }.filter { it.third.isAfter(now) }.sortedBy { it.third }.take(3)
+        activities.nextReminders(now, limit = 3)
     }
     // Streak: hari beruntun (mundur dari hari ini/kemarin) yang semua kegiatannya selesai & ada kegiatan.
     val streak = remember(activities, today) {

@@ -598,6 +598,7 @@ keystore permanen di bawah ini.
 |---|---|---|
 | 1 | 1.0 | Rilis awal (#83) + perbaikan ronde 1 (#85), ronde 2 (#86), ronde 3 (#87) — signing debug tidak persisten (insiden di atas) |
 | 2 | 1.0.1 | Ronde 3b (#88): isi kode = ronde 3, signing diganti keystore permanen |
+| 3 | 1.0.2 | Ronde 4 (#89): PDF deskripsi + multi-halaman, getar berlapis + channel v4 + diagnostik, Reminder Terdekat 1 entri/kegiatan, layar bangun (fullScreenIntent) |
 
 ### Hasil build ronde 3b (#88)
 - **Status: BERHASIL — `BUILD SUCCESSFUL`** (Gradle 8.7 offline,
@@ -627,3 +628,102 @@ keystore permanen di bawah ini.
   di Pengaturan bila perlu). Mulai dari versi inilah setiap update
   berikutnya bisa langsung ditimpa tanpa uninstall, selama keystore
   permanen di atas tidak hilang.
+
+## Perbaikan Ronde 4 — Uji HP v1.0.1 (#89, 24 Okt 2026)
+
+Uji Rama atas v1.0.1: desain PDF, reset nada "Bawaan HP", timeline Harian,
+dan restore data LULUS. Empat catatan baru dikerjakan di ronde ini
+(versionCode **3** / versionName **1.0.2**, signing keystore permanen sama):
+
+### 1. PDF: deskripsi per kegiatan + multi-halaman penuh
+- Field `note` tiap kegiatan kini dicetak DI BAWAH judulnya (bila tidak
+  kosong) dengan format yang jelas beda: **9pt, abu-abu, italic, indent
+  10pt**, dibungkus penuh multi-baris tanpa elipsis (`PdfExporter.wrapFull`).
+- Simulasi tinggi baris (`rowHeight`) menghitung baris deskripsi, jadi
+  paginasi mengalir alami ke berapa pun halaman. Diverifikasi TIDAK ada
+  pembatas/truncate 1 halaman di exporter; footer "Halaman X dari Y" =
+  total nyata hasil simulasi.
+- Preview PDF di app disamakan: deskripsi tampil di bawah judul tiap baris
+  (10.5sp italic abu-abu).
+
+### 2. Getar reminder — perbaikan berlapis + diagnostik
+Temuan kode (penyebab paling mungkin getar absen di v1.0.1): getar dipanggil
+LEWAT `AudioAttributes USAGE_ALARM` di dalam try/catch yang MENELAN semua
+exception — di EMUI jalur atribut alarm dapat digerbangi kebijakan haptik
+OEM sehingga panggilan diterima API tetapi motor tidak berputar, tanpa
+jejak apa pun; ditambah channel v3 `enableVibration(false)` menutup jalur
+cadangan OS. Perbaikan:
+- (a) Panggilan UTAMA kini overload POLOS `vibrate(effect)` TANPA
+  AudioAttributes, waveform amplitudo PENUH 255
+  (`VIBRATION_AMPLITUDES`), pola di-loop selama bunyi (maks 20 dtk,
+  berhenti bersama suara). Lapisan cadangan berjenjang: waveform + atribut
+  alarm (perilaku lama) → API pola lama.
+- (b) Exception TIDAK ditelan: hasil setiap upaya getar (sukses/gagal +
+  pesan + `hasVibrator` + jam) disimpan ke `AppPrefs.vibrationDiagnostic`
+  dan ditampilkan sebagai baris "Diagnostik getar: ..." di layar Reminder
+  & Pengaturan (`VibrationDiagnosticLine`).
+- (c) Tombol Tes Reminder tetap lewat jalur asli (AlarmManager → Receiver
+  → Service → `play()`), dan Toast kini melaporkan `hasVibrator` HP.
+- (d) Channel BARU **v4** (`reminder4_*`): `enableVibration(true)` + pola
+  getar kuat, suara tetap `null` (anti dobel — bunyi 100% dari kode),
+  visibilitas lockscreen PUBLIC. Channel v3 & skema lama dihapus.
+
+### 3. Reminder Terdekat: satu entri per kegiatan
+- Penyebab lama: daftar diekspansi per HARI (14 hari × semua kegiatan),
+  jadi dua kegiatan harian berulang (Doa & tes 1, sama-sama 08.45) memenuhi
+  daftar berselang-seling.
+- Kini memakai `List<ActivityEntity>.nextReminders(now, limit)` (domain):
+  SATU entri per kegiatan = kemunculan berikutnya saja, urut waktu trigger
+  naik, tie-break judul (lowercase). Berlaku di layar Reminder (maks 10)
+  DAN kartu Reminder Terdekat di Beranda (maks 3). Seri lengkap tetap di
+  Detail kegiatan.
+
+### 4. Layar menyala saat reminder di HP terkunci
+- Permission baru `USE_FULL_SCREEN_INTENT`; notifikasi reminder (receiver
+  & service) memakai `setFullScreenIntent` dengan intent WAKE khusus
+  (request code +500.000) yang membuka MainActivity langsung ke Detail
+  kegiatan.
+- MainActivity untuk intent WAKE: `setShowWhenLocked(true)` +
+  `setTurnScreenOn(true)` (API 27+; flag window ekuivalen di bawahnya).
+  Penting: peluncuran WAKE TIDAK menghentikan bunyi (alarm tetap berdering
+  sampai user bertindak / 20 dtk); ketukan notifikasi biasa (intent konten,
+  wake=false) tetap menghentikan bunyi seperti perilaku ronde 2.
+- Cadangan: selama bunyi, ReminderSoundService memegang
+  `SCREEN_BRIGHT_WAKE_LOCK | ACQUIRE_CAUSES_WAKEUP` ber-timeout seumur
+  bunyi. Kategori notif tetap ALARM + visibility PUBLIC.
+
+### Hasil build ronde 4
+- **Status: BERHASIL — `BUILD SUCCESSFUL`** (Gradle 8.7 offline, folder
+  proyek asli di VM ini, `keystore.properties` ADA → signing permanen).
+- **APK debug baru:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **16.936.444 byte (±16,2 MB)**, sha256
+  `9bbacd3102bdb15c7dd4e9a45884cb5bbe0b98c11f0e06e6d8379fc0e0b37dba`;
+  salinan praktis `../TodoPlanner-debug.apk` sudah ditimpa (hash sama,
+  diverifikasi). Angka ini dari build BERSIH final (`clean assembleDebug`)
+  yang dijalankan koordinator setelah rekonsiliasi kedua jalur — build
+  paralel sebelumnya sempat menghasilkan sha `228bb971...` dari source
+  yang belum memuat pemisahan intent WAKE & kode deskripsi PDF terakhir;
+  file itulah yang digantikan build bersih ini (ukuran kebetulan sama,
+  isi dex diverifikasi ulang: `wrapFull`, `extra_wake_reminder`,
+  `reminder4_`, "Diagnostik getar" semua ADA).
+- **GERBANG LOLOS:** `apksigner verify --print-certs` → Signer #1 SHA-256
+  digest = `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+  — SAMA PERSIS dengan cert keystore permanen → APK ini bisa di-UPDATE
+  langsung di atas v1.0.1 tanpa uninstall.
+- Terverifikasi: package `id.rama.todoplanner` versionCode **3** /
+  versionName **1.0.2**, minSdk 26, targetSdk 34; permission = sebelumnya +
+  `USE_FULL_SCREEN_INTENT` (**tetap TANPA INTERNET**); integritas zip utuh
+  (157 entri); string dex memuat `reminder4_` & "Diagnostik getar:".
+- **Catatan proses jujur:** seperti ronde 2–3, ronde ini sempat dikerjakan
+  dua jalur paralel di folder yang sama; keduanya direkonsiliasi menjadi
+  SATU basis kode sebelum build final (desain intent WAKE terpisah untuk
+  fullScreenIntent berasal dari jalur paralel dan dipertahankan karena
+  lebih benar: layar menyala tanpa mematikan bunyi). Tidak ada file sumber
+  yang berubah setelah build final dimulai — APK di atas persis dari
+  source folder ini.
+- **Catatan jujur:** verifikasi di VM sebatas compile + signature +
+  badging + isi dex. Getar, layar-bangun, deskripsi PDF, dan daftar
+  Reminder Terdekat baru terbukti lewat uji HP Rama berikutnya — untuk
+  getar, baca baris "Diagnostik getar:" di layar Reminder setelah Tes
+  Reminder agar uji berbasis bukti.
+

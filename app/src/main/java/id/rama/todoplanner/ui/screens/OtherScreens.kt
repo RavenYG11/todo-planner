@@ -50,9 +50,10 @@ import androidx.core.content.ContextCompat
 import id.rama.todoplanner.backup.BackupManager
 import id.rama.todoplanner.data.AppPrefs
 import id.rama.todoplanner.domain.occurrencesBetween
-import id.rama.todoplanner.domain.reminderDateTime
+import id.rama.todoplanner.domain.nextReminders
 import id.rama.todoplanner.reminder.ReminderChannels
 import id.rama.todoplanner.reminder.ReminderScheduler
+import id.rama.todoplanner.reminder.ReminderSoundPlayer
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.Screen
 import id.rama.todoplanner.ui.components.CategoryColors
@@ -87,13 +88,17 @@ fun ReminderTestButtons(globalToneUri: String?) {
     val prefs = remember { AppPrefs(context) }
     Column {
         // RONDE 3: tombol aksi utama memakai gradasi mockup, bukan biru Material polos.
+        // RONDE 4: alarm tes berjalan lewat jalur yang PERSIS sama dengan
+        // reminder asli (AlarmManager -> ReminderReceiver -> ReminderSoundService
+        // -> ReminderSoundPlayer.play), dan Toast melaporkan hasVibrator HP ini.
         id.rama.todoplanner.ui.components.GradientButton(
             text = "🔔 Tes Reminder 10 Detik",
             onClick = {
                 ReminderScheduler.scheduleTest(context, prefs)
+                val hasVib = ReminderSoundPlayer.hasVibrator(context)
                 Toast.makeText(
                     context,
-                    "Tes dijadwalkan — kunci layar, bunyi+getar ±10 detik lagi",
+                    "Tes dijadwalkan ±10 detik lagi (jalur play() asli) • hasVibrator: $hasVib — kunci layar sekarang",
                     Toast.LENGTH_LONG
                 ).show()
             },
@@ -106,6 +111,23 @@ fun ReminderTestButtons(globalToneUri: String?) {
             modifier = Modifier.fillMaxWidth()
         ) { Text("⚙️ Buka Pengaturan Notifikasi") }
     }
+}
+
+/**
+ * RONDE 4 — baris diagnostik getar: hasil upaya getar TERAKHIR yang disimpan
+ * ReminderSoundPlayer ke AppPrefs (sukses/gagal + pesan + hasVibrator + jam).
+ * Ditampilkan kecil di layar Reminder & Pengaturan agar uji HP berbasis bukti.
+ */
+@Composable
+fun VibrationDiagnosticLine() {
+    val context = LocalContext.current
+    val prefs = remember { AppPrefs(context) }
+    // Dibaca ulang tiap layar tersusun (layar ini dibuka lagi setelah tes bunyi).
+    val diag = remember { prefs.vibrationDiagnostic }
+    Text(
+        "Diagnostik getar: " + if (diag.isBlank()) "belum ada upaya getar sejak update ini — jalankan Tes Reminder." else diag,
+        fontSize = 11.sp, color = Color(0xFF70858E)
+    )
 }
 
 private fun openChannelSettings(context: Context, toneUri: String?) {
@@ -147,14 +169,10 @@ fun ReminderScreen(vm: AppViewModel) {
     }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifGranted = it }
 
+    // RONDE 4: SATU entri per kegiatan (kemunculan berikutnya saja),
+    // urut waktu trigger naik, tie-break judul — sama seperti kartu Beranda.
     val upcoming = remember(activities) {
-        val now = LocalDateTime.now()
-        activities.flatMap { a ->
-            (0..13).mapNotNull { off ->
-                val d = LocalDate.now().plusDays(off.toLong())
-                a.reminderDateTime(d)?.let { t -> Triple(a.title, d, t) }
-            }
-        }.filter { it.third.isAfter(now) }.sortedBy { it.third }.take(10)
+        activities.nextReminders(LocalDateTime.now(), limit = 10)
     }
 
     Column(
@@ -188,6 +206,8 @@ fun ReminderScreen(vm: AppViewModel) {
                 )
                 Spacer(Modifier.height(10.dp))
                 ReminderTestButtons(globalToneUri = profile.globalToneUri)
+                Spacer(Modifier.height(8.dp))
+                VibrationDiagnosticLine()
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -204,10 +224,10 @@ fun ReminderScreen(vm: AppViewModel) {
         Spacer(Modifier.height(14.dp))
         Text("Reminder Terdekat", fontWeight = FontWeight.Bold, color = Ink)
         if (upcoming.isEmpty()) Text("Belum ada reminder terjadwal.")
-        upcoming.forEach { (title, _, time) ->
+        upcoming.forEach { (activity, _, time) ->
             SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
                 Text(
-                    "• ${time.format(DateTimeFormatter.ofPattern("HH.mm"))} — $title  (${time.format(DateTimeFormatter.ofPattern("d MMM"))})",
+                    "• ${time.format(DateTimeFormatter.ofPattern("HH.mm"))} — ${activity.title}  (${time.format(DateTimeFormatter.ofPattern("d MMM"))})",
                     modifier = Modifier.padding(12.dp), fontSize = 13.sp
                 )
             }
@@ -398,6 +418,8 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
                 Text("🧪 Tes Reminder", fontWeight = FontWeight.Bold, color = Ink)
                 Spacer(Modifier.height(8.dp))
                 ReminderTestButtons(globalToneUri = profile.globalToneUri)
+                Spacer(Modifier.height(8.dp))
+                VibrationDiagnosticLine()
             }
         }
         SettingRow("📄 Export PDF") { onNavigate(Screen.Export) }
@@ -406,7 +428,7 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
         SoftCard(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text("Tentang", fontWeight = FontWeight.Bold, color = Ink)
-                Text("Todo Planner v1.0 — full lokal & offline.")
+                Text("Todo Planner v1.0.2 — full lokal & offline.")
             }
         }
     }

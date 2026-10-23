@@ -264,7 +264,19 @@ fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, cat
                             modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(occ.activity.title, fontSize = 12.sp, modifier = Modifier.weight(1.7f))
+                            // RONDE 4: deskripsi ikut tampil di bawah judul (kecil,
+                            // abu-abu, italic) — sama seperti PDF aslinya.
+                            Column(modifier = Modifier.weight(1.7f)) {
+                                Text(occ.activity.title, fontSize = 12.sp)
+                                if (occ.activity.note.isNotBlank()) {
+                                    Text(
+                                        occ.activity.note,
+                                        fontSize = 10.5.sp,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        color = Color(0xFF70858E)
+                                    )
+                                }
+                            }
                             Text(occ.date.format(DateTimeFormatter.ofPattern("d MMM", idLocale)), fontSize = 12.sp, modifier = Modifier.weight(0.55f))
                             Box(modifier = Modifier.weight(0.75f)) { CategoryPill(occ.activity.category) }
                             Text(
