@@ -156,7 +156,7 @@ fun FormScreen(
         Button(
             onClick = {
                 if (title.isBlank()) { titleError = true; return@Button }
-                val entity = (existing ?: ActivityEntity(title = "")).copy(
+                val entity = (existing ?: ActivityEntity(title = "", dateEpochDay = date.toEpochDay())).copy(
                     title = title.trim(),
                     dateEpochDay = date.toEpochDay(),
                     startMinutes = startMin,
