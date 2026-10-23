@@ -121,6 +121,25 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
 
     fun setThemeMode(mode: String) { prefs.themeMode = mode; refreshProfile() }
 
+    /**
+     * Jadwalkan ulang SEMUA reminder (ronde 2, audit jalur kegiatan lama):
+     * dipanggil tiap aplikasi dibuka — kegiatan yang dibuat sebelum update pun
+     * pindah ke skema alarm terbaru (2 alarm + bunyi dari kode). BootReceiver
+     * melakukan hal yang sama setelah HP menyala ulang.
+     */
+    fun rescheduleAllReminders() {
+        viewModelScope.launch {
+            repo.getAllActivitiesOnce().forEach { ReminderScheduler.schedule(app, it, prefs) }
+        }
+    }
+
+    /** Tombol "Tes Reminder 10 Detik" di Pengaturan. */
+    fun scheduleTestReminder() { ReminderScheduler.scheduleTest(app, prefs) }
+
+    /** ID channel v3 aktif (untuk nada global) — target deep link pengaturan channel. */
+    fun activeReminderChannelId(): String =
+        id.rama.todoplanner.reminder.ReminderChannels.ensureChannel(app, prefs.globalRingtoneUri)
+
     fun toggleDone(activity: ActivityEntity, epochDay: Long, done: Boolean) {
         viewModelScope.launch { repo.saveActivity(activity.withDoneOn(epochDay, done)) }
     }

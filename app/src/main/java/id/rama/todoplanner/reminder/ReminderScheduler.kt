@@ -17,18 +17,26 @@ import java.time.ZoneId
  * Menjadwalkan alarm reminder lokal dengan AlarmManager.
  * Nada efektif = nada per kegiatan, atau global bila kegiatan tidak mengatur sendiri.
  *
- * PERILAKU BARU (permintaan Rama, ronde 1): opsi "Tepat waktu" dihapus sebagai
- * pilihan tersendiri — kini SETIAP kegiatan ber-reminder mendapat 2 alarm:
+ * PERILAKU (ronde 1, dipertahankan): opsi "Tepat waktu" dihapus sebagai
+ * pilihan tersendiri — SETIAP kegiatan ber-reminder mendapat 2 alarm:
  *  1. alarm pengingat awal pada (jam mulai − offset), dan
  *  2. alarm pas jam mulai kegiatan itu sendiri.
  * Reminder "Tanpa" (null) = tidak ada alarm sama sekali.
- * Suara + getar berlaku untuk semua prioritas kegiatan — prioritas tidak
- * menggerbangi notifikasi sama sekali.
+ * Suara + getar berlaku untuk semua prioritas kegiatan.
+ *
+ * RONDE 2: ditambah [scheduleTest] (tombol "Tes Reminder 10 Detik" di
+ * Pengaturan/Reminder) dan [rescheduleAll] (dipakai saat aplikasi dibuka &
+ * setelah boot, supaya kegiatan LAMA dari versi sebelumnya ikut berbunyi
+ * dengan jalur bunyi baru).
  */
 object ReminderScheduler {
 
     private const val KIND_EARLY = "early"
     private const val KIND_START = "start"
+    private const val KIND_TEST = "test"
+
+    /** Request code & ID notifikasi khusus alarm tes (jauh dari kode kegiatan: id*2 / id*2+1). */
+    const val TEST_REQUEST_CODE = 990_002
 
     fun schedule(context: Context, activity: ActivityEntity, prefs: AppPrefs) {
         cancel(context, activity.id)
@@ -42,7 +50,7 @@ object ReminderScheduler {
 
         if (earlyAt != null) {
             setAlarm(
-                context, activity, earlyCode(activity.id), KIND_EARLY,
+                context, earlyCode(activity.id), KIND_EARLY,
                 title = "⏰ ${offsetLabel(offset)} lagi: ${activity.title}",
                 text = "Mulai pukul $jam",
                 triggerMillis = earlyAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
@@ -50,12 +58,30 @@ object ReminderScheduler {
             )
         }
         setAlarm(
-            context, activity, startCode(activity.id), KIND_START,
+            context, startCode(activity.id), KIND_START,
             title = "Mulai sekarang: ${activity.title}",
             text = "Pukul $jam — kegiatan dimulai sekarang",
             triggerMillis = startAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
             toneUri = toneUri, toneName = toneName
         )
+    }
+
+    /** Alarm tes: berbunyi 10 detik dari sekarang dengan nada global terpilih. */
+    fun scheduleTest(context: Context, prefs: AppPrefs) {
+        val trigger = System.currentTimeMillis() + 10_000L
+        setAlarm(
+            context, TEST_REQUEST_CODE, KIND_TEST,
+            title = "🔔 Tes Reminder — Todo Planner",
+            text = "Bunyi + getar tes. Nada: ${prefs.globalRingtoneName}",
+            triggerMillis = trigger,
+            toneUri = prefs.globalRingtoneUri,
+            toneName = prefs.globalRingtoneName
+        )
+    }
+
+    /** Jadwalkan ulang SEMUA kegiatan (aplikasi dibuka / boot / nada global berubah). */
+    fun rescheduleAll(context: Context, activities: List<ActivityEntity>, prefs: AppPrefs) {
+        activities.forEach { schedule(context, it, prefs) }
     }
 
     /**
@@ -89,7 +115,6 @@ object ReminderScheduler {
 
     private fun setAlarm(
         context: Context,
-        activity: ActivityEntity,
         requestCode: Int,
         kind: String,
         title: String,
@@ -99,7 +124,7 @@ object ReminderScheduler {
         toneName: String?
     ) {
         val intent = Intent(context, ReminderReceiver::class.java).apply {
-            putExtra(ReminderReceiver.EXTRA_ID, requestCode)
+            putExtra(ReminderReceiver.EXTRA_ID, requestCode.toLong())
             putExtra(ReminderReceiver.EXTRA_TITLE, title)
             putExtra(ReminderReceiver.EXTRA_TEXT, text)
             putExtra(ReminderReceiver.EXTRA_KIND, kind)

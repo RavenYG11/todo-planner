@@ -53,8 +53,12 @@ app/src/main/java/id/rama/todoplanner/
 │   ├── Dates.kt               # format tanggal Indonesia + aturan sapaan jam HP
 │   └── Occurrences.kt         # logika pengulangan (harian/mingguan/bulanan/tahunan) per tanggal
 ├── reminder/
-│   ├── ReminderScheduler.kt   # AlarmManager (exact bila diizinkan, fallback setAndAllowWhileIdle)
-│   ├── ReminderReceiver.kt    # tampilkan notifikasi; suara = channel dari URI nada pilihan user
+│   ├── ReminderScheduler.kt   # AlarmManager (exact bila diizinkan, fallback setAndAllowWhileIdle) + alarm tes
+│   ├── ReminderReceiver.kt    # terima alarm -> mulai bunyi dari kode + tampilkan notifikasi heads-up
+│   ├── ReminderChannels.kt    # channel v3 (senyap, khusus tampilan) + bersihkan channel lama (ronde 2)
+│   ├── ReminderSoundPlayer.kt # putar nada (MediaPlayer USAGE_ALARM) + getar dari kode (ronde 2)
+│   ├── ReminderSoundService.kt# foreground service penjaga putaran nada maks 20 dtk (ronde 2)
+│   ├── StopSoundReceiver.kt   # hentikan bunyi/getar (notifikasi dibuang/diketuk) (ronde 2)
 │   └── BootReceiver.kt        # jadwalkan ulang semua reminder setelah HP reboot
 ├── pdf/PdfExporter.kt         # PDF beneran via PdfDocument native + simpan MediaStore Unduhan
 ├── backup/BackupManager.kt    # export/import seluruh data <-> file JSON
@@ -77,8 +81,11 @@ app/src/main/java/id/rama/todoplanner/
 - **Nada dering:** tombol *Ganti* membuka **ringtone picker bawaan Android**
   (`RingtoneManager.ACTION_RINGTONE_PICKER`, termasuk opsi Bawaan & Senyap). URI pilihan disimpan.
   Karena di Android suara adalah properti *notification channel*, aplikasi membuat channel per URI
-  nada (id channel = hash URI) supaya suara selalu mengikuti pilihan terakhir. Nada bisa diatur
+  nada (id channel `reminder2_<hash URI>` sejak ronde 1 — lihat bagian Perbaikan Ronde 1) supaya
+  suara selalu mengikuti pilihan terakhir. Nada bisa diatur
   global (layar Reminder) dan per kegiatan (form); Detail menampilkan nada efektif kegiatan.
+  **(Ronde 2 menggantikan pendekatan ini: channel v3 sengaja senyap dan bunyi diputar dari kode —
+  lihat bab "Perbaikan Ronde 2" di akhir dokumen.)**
 - **Reminder setelah reboot:** `BootReceiver` menjadwalkan ulang semua reminder saat `BOOT_COMPLETED`.
   Izin alarm eksak (`SCHEDULE_EXACT_ALARM`) dipakai bila tersedia; bila tidak, fallback
   `setAndAllowWhileIdle` (bisa bergeser beberapa menit oleh Doze Android — perilaku OS, bukan bug).
@@ -87,8 +94,9 @@ app/src/main/java/id/rama/todoplanner/
   `Unduhan/TodoPlanner/` via MediaStore. API 26–28: tersimpan di folder eksternal aplikasi dan tetap
   bisa dibagikan. Tombol Bagikan memakai salinan cache + FileProvider (share intent).
 - **Foto profil:** memakai photo picker Android (`PickVisualMedia`) — tanpa permission galeri.
-  Foto disalin ke `filesDir/profile_photo.jpg`, ditampilkan lingkaran `ContentScale.Crop` (crop tengah)
-  di semua avatar. Hapus Foto mengembalikan avatar ke inisial/emoji.
+  Sejak ronde 1: orientasi EXIF diterapkan ke piksel saat impor, lalu user mengatur crop
+  manual (geser/zoom/putar) sebelum disimpan ke `filesDir/profile_photo.jpg`; ditampilkan
+  lingkaran `ContentScale.Crop` di semua avatar. Hapus Foto mengembalikan avatar ke inisial/emoji.
 - **Tombol Back HP:** peta induk tetap di `ui/Nav.kt` (`parentOf()`), dijalankan satu `BackHandler`
   di akar (di atas `OnBackPressedDispatcher`). Bukan undo riwayat sesi.
 - **UI bersih:** sesuai perintah Rama, UI tidak memuat paragraf penjelasan/meta — label singkat saja.
@@ -113,11 +121,64 @@ app/src/main/java/id/rama/todoplanner/
 | 13 | Profil & Personalisasi (UI bersih): nama live, foto galeri, warna avatar, avatar inisial/emoji | ✅ |
 | 14 | Tombol Back HP peta induk tetap + form kotor konfirmasi + Beranda tekan 2× keluar | ✅ |
 
+## Perbaikan Ronde 1 — Uji HP Rama (Assignment #85, 24 Okt 2026)
+
+Tiga masalah dari uji perdana di HP Huawei Rama (bukti: `../feedback/uji1-*`) diperbaiki:
+
+1. **Form rusak + jauh dari mockup.** Akar masalah: baris chip memakai `Row` biasa — chip
+   terakhir terhimpit jadi kolom sempit (teks per huruf: 'Tahunan', '1 jam sebelum',
+   'Kesehatan'), dan baris 3 tombol tanggal/jam saling desak (tombol 'Selesai' jadi
+   lingkaran raksasa). Fix: `ChipRow` → `FlowRow` + komponen `PastelChip` (lebar mengikuti
+   konten, membungkus rapi, warna pastel per grup/kategori, label 1 baris); tombol
+   tanggal/jam → `OutlinedButton` proporsional di `FlowRow`; pola yang sama diterapkan di
+   layar Export & Kalender. Restyle ke mockup "Langit Pagi": `DawnHeader` (gradasi fajar
+   terang #CDEBFF→#FFE7CF + teks tinta) di Form & Profil, header Beranda gradasi fajar
+   terang + teks tinta, `GradientButton` (gradasi peach→coral / biru→mint) untuk tombol
+   utama (Simpan, Export PDF, Tandai Selesai, Simpan Profil), container pastel di tema.
+2. **Foto profil miring.** Akar masalah: byte JPEG disalin mentah dari galeri; penampil
+   bitmap mengabaikan tag orientasi EXIF. Fix: `PhotoStore` men-decode + menerapkan EXIF
+   ke piksel (rotate/flip, maks 1024px) sebelum simpan (`android.media.ExifInterface`,
+   tanpa dependensi baru). Pengaturan manual PENUH: layar `PhotoCropper` (geser + pinch
+   zoom + putar 90°, guide lingkaran; hasil crop persegi yang disimpan) setiap memilih
+   foto, plus tombol "Putar 90°" untuk foto yang sudah tersimpan di Profil. Cache avatar
+   menyertakan `lastModified` file agar foto hasil putar/crop langsung termuat ulang.
+   CATATAN: foto lama yang sudah telanjur tersimpan miring tetap miring sampai dipilih
+   ulang lewat cropper atau diputar manual — file lamanya memang sudah tanpa EXIF benar.
+3. **Reminder muncul tapi senyap & tidak getar.** Akar masalah: (a) `enableVibration`
+   hanya dipanggil di cabang nada senyap — cabang nada normal tidak pernah mengaktifkan
+   getar; (b) suara hanya hidup di channel, dan channel Android **immutable**: channel
+   skema lama yang tercipta dengan konfigurasi salah mengunci senyap selamanya;
+   (c) builder tidak memasang `setVibrate`. Fix: channel BARU ber-prefix `reminder2_`
+   (per kunci nada), `IMPORTANCE_HIGH`, suara = URI nada pilihan kegiatan itu (fallback
+   nada notifikasi bawaan sistem bila kosong), `enableVibration(true)` + pola eksplisit
+   `0,250,150,250` di SEMUA cabang, channel lama `reminder_*` dibersihkan, builder
+   memasang `setVibrate` + `PRIORITY_HIGH`. Permission `VIBRATE` sudah ada sejak v1.
+   **Penyempurnaan Rama (ronde yang sama):** bunyi + getar berlaku di SEMUA prioritas
+   kegiatan (prioritas tidak menggerbangi notifikasi); opsi "Tepat waktu" DIHAPUS —
+   pilihan kini Tanpa / 15 mnt / 1 jam / 1 hari sebelum, dan setiap reminder aktif
+   mendapat **2 alarm**: pengingat awal **dan** pas jam mulai (request code & id
+   notifikasi terpisah per jenis; "Tanpa" = tidak ada alarm). Data lama bernilai 0
+   tetap terbaca sebagai "Pas jam mulai" di Detail dan dijadwalkan sebagai alarm
+   pas-mulai saja. Alarm ulangan berikutnya dijadwalkan ulang saat simpan, reboot
+   (`BootReceiver`), dan buka aplikasi.
+   Verifikasi ronde ini sebatas compile + signature + isi dex (string channel/label
+   baru ada di APK) — bunyi/getar/crop/form terbukti pada uji HP Rama berikutnya.
+
+File diubah/ditambah ronde 1: `ui/screens/FormScreen.kt`, `ui/screens/HomeScreen.kt`,
+`ui/screens/ProfileScreen.kt`, `ui/screens/DetailScreen.kt`, `ui/screens/ExportScreens.kt`,
+`ui/screens/CalendarScreen.kt`, `ui/components/Common.kt` (PastelChip/GradientButton/
+DawnHeader), `ui/components/PhotoStore.kt` (baru), `ui/components/PhotoCropper.kt` (baru),
+`ui/AppViewModel.kt`, `ui/theme/Theme.kt`, `reminder/ReminderReceiver.kt`,
+`reminder/ReminderScheduler.kt`.
+
 ## Hasil Compile
-- **Status: BERHASIL — `BUILD SUCCESSFUL` (Gradle 8.7, AGP 8.5.2, Kotlin 2.0.20), 23 Okt 2026.**
-- **APK debug:** `app/build/outputs/apk/debug/app-debug.apk` — **16.788.744 byte (±16,0 MB)**,
-  sha256 `9de295a05095117af3676a63368401e7c92679e9a9ee447199721d083ddf1c4c`.
+- **Status: BERHASIL — `BUILD SUCCESSFUL` (Gradle 8.7, AGP 8.5.2, Kotlin 2.0.20), 24 Okt 2026 (ronde 1).**
+- **APK debug:** `app/build/outputs/apk/debug/app-debug.apk` — **16.835.201 byte (±16,1 MB)**,
+  sha256 `3ac4fec360f6db9fb6d0aada2d8121eb69396eb269018b7eac0b4d42405bab57`.
   Salinan praktis juga ada di `../TodoPlanner-debug.apk` (isi identik, hash sama).
+  (Build ronde 1 pertama, 16.835.209 byte / sha256 `9fe57ab2…`, sempat terkirim lebih dulu;
+  APK final di atas menyusul dengan poles tambahan: chip Export, header Beranda terang,
+  rasio geser cropper, dan state nonaktif GradientButton.)
 - **APK ini sudah digantikan oleh hasil Perbaikan Ronde 1 (#85) — lihat bab terakhir dokumen ini.**
 - **Terverifikasi pada APK:** package `id.rama.todoplanner`, versionName `1.0`, minSdk 26, targetSdk 34;
   permission hanya POST_NOTIFICATIONS, SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED, VIBRATE
@@ -229,3 +290,131 @@ di ronde ini; tanpa QA terpisah — APK hasil langsung diserahkan ke Rama.
 - **Catatan jujur:** build debug; perbaikan runtime (bunyi/getar reminder, crop
   foto, tampilan form) baru terbukti setelah Rama meng-install APK ini dan
   mengujinya di HP-nya — verifikasi di VM sebatas compile + signature + badging.
+
+## Perbaikan Ronde 2 — Uji HP (#86, 24 Okt 2026)
+
+Uji ronde 1 oleh Rama (bukti: `../feedback/uji2-*`): form AMAN, foto profil BERES,
+tampilan notifikasi bagus — tetapi DUA masalah tersisa, diperbaiki di ronde ini.
+Tanpa QA terpisah (perintah Rama) — APK hasil langsung diserahkan ke manager.
+
+### A. Suara + getar reminder MASIH tidak ada → bunyi diputar DARI KODE
+
+- **Akar masalah:** ronde 1 menggantungkan bunyi SEPENUHNYA ke notification
+  channel (`reminder2_*`, IMPORTANCE_HIGH + `setSound(URI)` + pola getar).
+  Di Huawei/EMUI pendekatan channel-only terbukti tidak cukup: notifikasi
+  tampil bagus tetapi senyap & tidak getar — suara/getar channel berada di
+  luar kendali aplikasi (klasifikasi & pengaturan channel EMUI, channel
+  immutable). Selama bunyi hanya "dipesan" ke channel, tidak ada jaminan
+  ia benar-benar diputar.
+- **Pendekatan baru (tidak mengandalkan channel untuk bunyi sama sekali):**
+  1. **Putar nada dari kode** — saat alarm berbunyi, `ReminderReceiver`
+     memulai `ReminderSoundService` (foreground service ringan; konteks
+     alarm eksak adalah konteks yang diizinkan Android 12+ memulainya)
+     yang memutar nada kegiatan itu lewat `ReminderSoundPlayer`
+     (MediaPlayer, `AudioAttributes USAGE_ALARM` +
+     `CONTENT_TYPE_SONIFICATION` — jalur audio jam alarm, bukan jalur
+     notifikasi). Bila OEM menolak start service dari latar, receiver
+     jatuh ke pemutaran langsung di receiver. Nada di-loop maks **20 detik**
+     (partial WakeLock ber-timeout), berhenti saat notifikasi diketuk
+     (MainActivity), dibuang (deleteIntent), atau tombol aksi
+     **"Matikan Bunyi"** ditekan — ketiganya lewat `StopSoundReceiver`.
+  2. **Getar dari kode** — `Vibrator`/`VibratorManager` dengan pola
+     eksplisit `0,300,200,300,200,600` (di-loop sampai berhenti), untuk
+     semua prioritas & semua mode; mode nada "Senyap" pilihan user = getar saja.
+  3. **Verifikasi + fallback nada** — URI nada pilihan dibuka stream-nya
+     dulu; gagal dibaca → nada ALARM bawaan → NOTIFIKASI bawaan → DERING
+     bawaan; bila MediaPlayer gagal di URI terverifikasi, dicoba sekali lagi
+     nada alarm bawaan. Prinsip: tidak ada jalur senyap.
+  4. **Channel v3** — `ReminderChannels` membuat channel BARU `reminder3_*`
+     IMPORTANCE_HIGH yang SENGAJA senyap & tanpa getar (bunyi/getar 100%
+     dari kode; menghindari bunyi ganda), dan menghapus channel lama
+     `reminder_*` & `reminder2_*`.
+  5. **Verifikasi mandiri untuk Rama** — tombol **"Tes Reminder 10 Detik"**
+     (alarm tes +10 dtk dengan nada global) dan **"Buka Pengaturan
+     Notifikasi"** (deep link `ACTION_CHANNEL_NOTIFICATION_SETTINGS` ke
+     channel aktif) di layar Reminder DAN Pengaturan; preview nada
+     (▶ Contoh / ⏹ Stop, maks 6 dtk) di semua field nada (`ToneField`).
+  6. **Kegiatan LAMA ikut berbunyi** — audit jalur: alarm dijadwalkan ulang
+     saat aplikasi dibuka (`TodoApplication.onCreate` +
+     `AppViewModel.rescheduleAllReminders` dari `TodoApp`) dan setelah boot
+     (`BootReceiver` kini juga memastikan channel v3 + `rescheduleAll`).
+  7. **Temuan audit tambahan:** `ReminderScheduler` ronde 1 menyimpan
+     `EXTRA_ID` sebagai Int sedangkan receiver membacanya sebagai Long —
+     ID notifikasi selalu terbaca 0 (notifikasi saling menimpa). Kini
+     konsisten Long end-to-end.
+- **Permission baru (tetap TANPA INTERNET):** `FOREGROUND_SERVICE`,
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, `WAKE_LOCK` (service dideklarasikan
+  `foregroundServiceType="mediaPlayback"`).
+- File baru: `reminder/ReminderChannels.kt`, `reminder/ReminderSoundPlayer.kt`,
+  `reminder/ReminderSoundService.kt`, `reminder/StopSoundReceiver.kt`.
+  File diubah: `reminder/ReminderReceiver.kt`, `reminder/ReminderScheduler.kt`
+  (+`scheduleTest`/`rescheduleAll`), `reminder/BootReceiver.kt`,
+  `AndroidManifest.xml`, `TodoApplication.kt`, `MainActivity.kt`,
+  `ui/components/TonePicker.kt`, `ui/AppViewModel.kt`.
+
+### B. Art/desain jauh dari mockup → design-fidelity pass per layar
+
+Acuan PERSIS `../mockups/mockup-varian-1-revisi.html` (bandingkan
+`uji2-mockup-beranda.jpg` vs `uji2-beranda-app.jpg` & `uji2-statistik-app.jpg`):
+
+- **Beranda:** header gradasi fajar kini memuat **ilustrasi pemandangan
+  fajar** (Canvas: matahari terbit ber-halo + awan + 2 lapis bukit mint,
+  meniru SVG mockup) lewat `DawnIllustration`; sapaan + **emoji fase hari**;
+  **tagline dinamis per fase** (`Dates.phaseTagline`, versi pagi = kalimat
+  mockup persis); **chip jam pill** putih transparan kanan atas (HH.mm + zona).
+- **Kartu progres:** ring gradasi **tebal** (96dp, stroke 10, ujung bulat),
+  **% besar + caption "hari ini" di tengah ring**, **judul dinamis mengikuti
+  %** ("Hari ini hampir selesai" ≥50%, dst), sub-teks sisa kegiatan, **pill
+  "🔥 Streak N hari"** (streak dihitung nyata) + pill aksen fase
+  (pengganti chip "Cuaca cerah" mockup — aplikasi offline tidak punya data
+  cuaca, jadi chip-nya aksen fase hari, bukan klaim cuaca).
+- **Kegiatan Berikutnya & Reminder Terdekat = kartu TERPISAH** berikon judul
+  (⏰/🔔); item kegiatan: **garis aksen warna kategori di kiri + lingkaran
+  centang kosong + judul tebal + sub-info jam–kategori–prioritas**; reminder:
+  bullet "• HH.mm — judul" (maks 3) + link **"Lihat semua reminder →"**.
+  Ditambah grid **"Mulai dari Template"** 2×2 seperti mockup.
+- **Komponen bersama:** `SoftCard` (kartu PUTIH lembut radius 18dp +
+  bayangan halus — akar masalah kartu abu polos adalah warna bawaan
+  Material `surfaceVariant`), `GradientBar`, `PastelPill`, `PeakIllustration`.
+  `ActivityRow` ditulis ulang gaya mockup (catbar + lingkaran centang) —
+  berlaku di semua daftar.
+- **Statistik:** bukan abu polos lagi — kartu puncak berilustrasi gunung
+  (Canvas: pegunungan + matahari + bendera) berisi capaian bulan nyata,
+  grid 2×2 mini (% besar + bar gradasi per periode: biru-peach, mint-hijau,
+  lavender), kartu Streak dengan ring mini, dan kartu per-kategori
+  (titik warna + % + bar warna kategori) — semua dari data nyata.
+- **Bottom nav:** ikon bergaya mockup (🏠, 🌤️ matahari/awan untuk Harian,
+  🗓️ kalender, ☰) dengan **pill pastel penanda aktif + label biru tebal**;
+  tombol **+ tengah 54dp berbingkai putih + glow/shadow coral** (menonjol).
+- **Bahasa sama ke layar lain:** latar pastel `#F4F9FB` + `SoftCard` putih
+  diterapkan juga di Reminder, Statistik, Pengaturan & Menu (fungsi tidak
+  berubah); Form/Template/Kalender/Detail/Export tetap memakai komponen
+  ronde 1 (DawnHeader/PastelChip/GradientButton) yang sudah satu bahasa.
+
+File diubah: `ui/screens/HomeScreen.kt` (tulis ulang), `ui/screens/OtherScreens.kt`
+(Statistik tulis ulang + tombol tes), `ui/screens/ActivityRow.kt`,
+`ui/components/Common.kt`, `ui/TodoApp.kt` (bottom nav), `domain/Dates.kt`
+(helper fase). Catatan proses: dua draf implementasi sempat terbentuk
+paralel di folder kerja pada ronde ini; yang dipertahankan adalah SATU
+jalur terpadu di atas (draf duplikat `AlarmSoundPlayer`/`ReminderAlertService`
+dihapus sebelum build, helper ViewModel dari draf itu diintegrasikan).
+
+### Hasil build ronde 2
+- **Status: BERHASIL — `BUILD SUCCESSFUL` (Gradle 8.7 offline, 1m 14s).**
+  Source di folder ini identik byte-per-byte dengan source yang ter-build
+  (diverifikasi `diff -rq`).
+- **APK debug baru:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **16.884.271 byte (±16,1 MB)**, sha256
+  `e0f3fb6be1512fb48c679a5a7ac32969e526ceb6c995973924b35c6b5d5b85a2`;
+  salinan praktis `../TodoPlanner-debug.apk` sudah ditimpa (hash sama).
+- Terverifikasi pada APK: signature debug valid (`apksigner verify` lolos);
+  package `id.rama.todoplanner` v1.0, minSdk 26, targetSdk 34; permission =
+  sebelumnya + FOREGROUND_SERVICE, FOREGROUND_SERVICE_MEDIA_PLAYBACK,
+  WAKE_LOCK (**tetap TANPA INTERNET**); manifest memuat service
+  `ReminderSoundService` + receiver `StopSoundReceiver`; string dex memuat
+  `reminder3_`, "Tes Reminder 10 Detik", "Matikan Bunyi".
+- **Catatan jujur:** build debug; verifikasi di VM sebatas compile +
+  signature + badging + isi dex. Bunyi/getar di EMUI dan fidelity desain
+  tetap terbukti hanya lewat uji HP Rama berikutnya — gunakan tombol
+  "Tes Reminder 10 Detik" (kunci layar dulu) untuk verifikasi bunyi mandiri.
+

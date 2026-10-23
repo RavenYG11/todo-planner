@@ -9,20 +9,23 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
@@ -39,10 +42,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -115,6 +120,10 @@ fun TodoApp(vm: AppViewModel) {
         }
     }
 
+    // Audit ronde 2: tiap aplikasi dibuka, jadwalkan ulang semua reminder —
+    // kegiatan lama (dibuat sebelum update) ikut pindah ke skema alarm terbaru.
+    LaunchedEffect(Unit) { vm.rescheduleAllReminders() }
+
     Scaffold(
         bottomBar = {
             if (screen !is Screen.Form && screen !is Screen.PdfPreview) {
@@ -175,33 +184,57 @@ fun TodoApp(vm: AppViewModel) {
 
 @Composable
 private fun BottomBar(screen: Screen, onNavigate: (Screen) -> Unit, onAdd: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().background(Color.White).padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        BarItem("Beranda", Icons.Filled.Home, screen is Screen.Home, Modifier.weight(1f)) { onNavigate(Screen.Home) }
-        BarItem("Harian", Icons.Filled.Today, screen is Screen.Daily, Modifier.weight(1f)) { onNavigate(Screen.Daily) }
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            Box(
-                modifier = Modifier.size(48.dp).clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(Peach, Coral, SkyBlue)))
-                    .clickable { onAdd() },
-                contentAlignment = Alignment.Center
-            ) { Icon(Icons.Filled.Add, contentDescription = "Tambah kegiatan", tint = Color.White) }
+    // Gaya mockup ronde 2: ikon berlabel, item aktif dalam pill pastel + label biru tebal,
+    // tombol + tengah lebih besar, berbingkai putih dan berpendar (shadow coral).
+    Column(modifier = Modifier.fillMaxWidth().background(Color.White)) {
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE7EEF2)))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BarItem("Beranda", "🏠", screen is Screen.Home, Modifier.weight(1f)) { onNavigate(Screen.Home) }
+            BarItem("Harian", "🌤️", screen is Screen.Daily, Modifier.weight(1f)) { onNavigate(Screen.Daily) }
+            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier.size(54.dp)
+                        .shadow(12.dp, CircleShape, ambientColor = Coral, spotColor = Coral)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(Peach, Coral, SkyBlue)))
+                        .border(3.dp, Color.White, CircleShape)
+                        .clickable { onAdd() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Add, contentDescription = "Tambah kegiatan",
+                        tint = Color.White, modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
+            BarItem("Kalender", "🗓️", screen is Screen.Calendar, Modifier.weight(1f)) { onNavigate(Screen.Calendar) }
+            BarItem("Semua", "☰", screen is Screen.Menu, Modifier.weight(1f)) { onNavigate(Screen.Menu) }
         }
-        BarItem("Kalender", Icons.Filled.CalendarMonth, screen is Screen.Calendar, Modifier.weight(1f)) { onNavigate(Screen.Calendar) }
-        BarItem("Semua", Icons.Filled.Menu, screen is Screen.Menu, Modifier.weight(1f)) { onNavigate(Screen.Menu) }
     }
 }
 
 @Composable
-private fun BarItem(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val tint = if (selected) Color(0xFF3E7CB1) else Color(0xFF8A9BA5)
+private fun BarItem(label: String, emoji: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    // Ikon bergaya mockup = glif emoji (🏠 / 🌤️ / 🗓️ / ☰), bukan ikon Material polos.
+    val tint = if (selected) Color(0xFF2B7BA6) else Color(0xFF7A8E97)
     Column(
         modifier = modifier.clickable { onClick() }.padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
-        Text(label, color = tint, fontSize = 10.sp)
+        Box(
+            modifier = Modifier.clip(RoundedCornerShape(16.dp))
+                .background(if (selected) Color(0xFFE1F2FB) else Color.Transparent)
+                .padding(horizontal = 14.dp, vertical = 3.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(emoji, fontSize = 20.sp)
+        }
+        Text(
+            label, color = tint, fontSize = 10.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
