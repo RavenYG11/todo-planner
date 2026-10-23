@@ -144,6 +144,14 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
         viewModelScope.launch { repo.saveActivity(activity.withDoneOn(epochDay, done)) }
     }
 
+    /** Varian dengan callback SETELAH simpan berhasil — dipakai Detail (ronde 3: langsung kembali ke Beranda). */
+    fun toggleDone(activity: ActivityEntity, epochDay: Long, done: Boolean, onComplete: () -> Unit) {
+        viewModelScope.launch {
+            repo.saveActivity(activity.withDoneOn(epochDay, done))
+            onComplete()
+        }
+    }
+
     fun saveActivity(entity: ActivityEntity, onSaved: (Long) -> Unit = {}) {
         viewModelScope.launch {
             val id = repo.saveActivity(entity)
@@ -163,6 +171,16 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
     /** Tunda: geser tanggal mulai seri +1 hari dan jadwalkan ulang reminder-nya. */
     fun snoozeActivity(activity: ActivityEntity) {
         saveActivity(activity.copy(dateEpochDay = activity.dateEpochDay + 1))
+    }
+
+    /** Varian dengan callback SETELAH tanggal+alarm diperbarui — dipakai Detail (ronde 3: langsung ke Beranda). */
+    fun snoozeActivity(activity: ActivityEntity, onComplete: () -> Unit) {
+        viewModelScope.launch {
+            val moved = activity.copy(dateEpochDay = activity.dateEpochDay + 1)
+            val id = repo.saveActivity(moved)
+            ReminderScheduler.schedule(app, moved.copy(id = id), prefs)
+            onComplete()
+        }
     }
 
     fun saveTarget(entity: TargetEntity) { viewModelScope.launch { repo.saveTarget(entity) } }

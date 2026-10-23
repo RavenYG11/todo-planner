@@ -31,7 +31,7 @@ object ReminderChannels {
     fun channelIdFor(toneUri: String?): String {
         val key = when {
             toneUri == AppPrefs.RINGTONE_SILENT -> "senyap"
-            toneUri.isNullOrBlank() -> "bawaan"
+            toneUri.isNullOrBlank() || toneUri == AppPrefs.RINGTONE_DEFAULT -> "bawaan"
             else -> toneUri.hashCode().toString()
         }
         return PREFIX_V3 + key

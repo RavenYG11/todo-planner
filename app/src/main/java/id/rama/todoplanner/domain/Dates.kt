@@ -5,6 +5,15 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+/**
+ * Fase waktu tunggal (RONDE 3) — SATU sumber kebenaran untuk sapaan, emoji,
+ * tagline, gradasi header, dan ilustrasi header Beranda.
+ * Batas fase persis keputusan Rama:
+ * PAGI 04.00–10.59 • SIANG 11.00–14.59 • SORE 15.00–18.59 • MALAM 19.00–03.59.
+ * Jangan hardcode fase/jam di layar — selalu lewat [Dates.phaseOf].
+ */
+enum class DayPhase { PAGI, SIANG, SORE, MALAM }
+
 /** Semua format tanggal Bahasa Indonesia terpusat di sini. */
 object Dates {
     private val idLocale = Locale("id", "ID")
@@ -16,36 +25,44 @@ object Dates {
     fun formatTime(minutes: Int?): String =
         if (minutes == null) "--:--" else LocalTime.of(minutes / 60, minutes % 60).toString()
 
+    /** Fase dari jam perangkat — batasnya sama persis dengan tabel sapaan di bawah. */
+    fun phaseOf(hour: Int): DayPhase = when (hour) {
+        in 4..10 -> DayPhase.PAGI
+        in 11..14 -> DayPhase.SIANG
+        in 15..18 -> DayPhase.SORE
+        else -> DayPhase.MALAM
+    }
+
     /** Sapaan mengikuti jam perangkat: 04-11 pagi, 11-15 siang, 15-19 sore, 19-04 malam. */
-    fun greeting(hour: Int): String = when (hour) {
-        in 4..10 -> "Selamat pagi"
-        in 11..14 -> "Selamat siang"
-        in 15..18 -> "Selamat sore"
-        else -> "Selamat malam"
+    fun greeting(hour: Int): String = when (phaseOf(hour)) {
+        DayPhase.PAGI -> "Selamat pagi"
+        DayPhase.SIANG -> "Selamat siang"
+        DayPhase.SORE -> "Selamat sore"
+        DayPhase.MALAM -> "Selamat malam"
     }
 
     /** Emoji fase hari untuk sapaan Beranda (sesuai mockup: 🌅 pagi, ☀️ siang, 🌇 sore, 🌙 malam). */
-    fun phaseEmoji(hour: Int): String = when (hour) {
-        in 4..10 -> "🌅"
-        in 11..14 -> "☀️"
-        in 15..18 -> "🌇"
-        else -> "🌙"
+    fun phaseEmoji(hour: Int): String = when (phaseOf(hour)) {
+        DayPhase.PAGI -> "🌅"
+        DayPhase.SIANG -> "☀️"
+        DayPhase.SORE -> "🌇"
+        DayPhase.MALAM -> "🌙"
     }
 
     /** Tagline Beranda yang dinamis mengikuti fase hari (versi pagi = kalimat mockup persis). */
-    fun phaseTagline(hour: Int): String = when (hour) {
-        in 4..10 -> "Hari yang cerah untuk menyelesaikan rencana baik."
-        in 11..14 -> "Terus melangkah — selesaikan satu per satu dengan tenang."
-        in 15..18 -> "Sore yang teduh untuk menuntaskan rencana hari ini."
-        else -> "Malam yang tenang — rapikan sisa hari ini, lalu beristirahat."
+    fun phaseTagline(hour: Int): String = when (phaseOf(hour)) {
+        DayPhase.PAGI -> "Hari yang cerah untuk menyelesaikan rencana baik."
+        DayPhase.SIANG -> "Terus melangkah — selesaikan satu per satu dengan tenang."
+        DayPhase.SORE -> "Sore yang teduh untuk menuntaskan rencana hari ini."
+        DayPhase.MALAM -> "Malam yang tenang — rapikan sisa hari ini, lalu beristirahat."
     }
 
     /** Chip aksen fase hari di kartu progres Beranda (pengganti chip cuaca mockup, jujur: bukan data cuaca). */
-    fun phaseAccentChip(hour: Int): String = when (hour) {
-        in 4..10 -> "🌅 Pagi cerah"
-        in 11..14 -> "☀️ Siang terang"
-        in 15..18 -> "🌇 Sore teduh"
-        else -> "🌙 Malam tenang"
+    fun phaseAccentChip(hour: Int): String = when (phaseOf(hour)) {
+        DayPhase.PAGI -> "🌅 Pagi cerah"
+        DayPhase.SIANG -> "☀️ Siang terang"
+        DayPhase.SORE -> "🌇 Sore teduh"
+        DayPhase.MALAM -> "🌙 Malam tenang"
     }
 
     fun today(): LocalDate = LocalDate.now()

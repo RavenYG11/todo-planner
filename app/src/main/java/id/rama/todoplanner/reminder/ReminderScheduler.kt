@@ -44,8 +44,10 @@ object ReminderScheduler {
         val now = LocalDateTime.now()
         val pair = nextAlarmPair(activity, offset, now) ?: return
         val (earlyAt, startAt) = pair
-        val toneUri = activity.ringtoneUri ?: prefs.globalRingtoneUri
-        val toneName = activity.ringtoneName ?: prefs.globalRingtoneName
+        // RONDE 3: resolver tunggal — sentinel per-kegiatan "default" menang
+        // atas global kustom; null per-kegiatan = ikuti global. Lihat ToneResolver.
+        val toneUri = ToneResolver.effectiveToneUri(activity.ringtoneUri, prefs.globalRingtoneUri)
+        val toneName = ToneResolver.effectiveToneLabel(activity.ringtoneUri, activity.ringtoneName, prefs.globalRingtoneName)
         val jam = startTimeText(activity)
 
         if (earlyAt != null) {
@@ -74,7 +76,7 @@ object ReminderScheduler {
             title = "🔔 Tes Reminder — Todo Planner",
             text = "Bunyi + getar tes. Nada: ${prefs.globalRingtoneName}",
             triggerMillis = trigger,
-            toneUri = prefs.globalRingtoneUri,
+            toneUri = ToneResolver.effectiveToneUri(null, prefs.globalRingtoneUri),
             toneName = prefs.globalRingtoneName
         )
     }

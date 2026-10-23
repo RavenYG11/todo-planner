@@ -418,3 +418,131 @@ dihapus sebelum build, helper ViewModel dari draf itu diintegrasikan).
   tetap terbukti hanya lewat uji HP Rama berikutnya — gunakan tombol
   "Tes Reminder 10 Detik" (kunci layar dulu) untuk verifikasi bunyi mandiri.
 
+
+## Perbaikan Ronde 3 — Uji HP (#87, 24 Okt 2026)
+
+Putusan uji ronde 2: "Udah bagus tapi" + 6 catatan. Tanpa QA (perintah Rama) —
+APK hasil ronde ini langsung dikirim apa adanya. Yang TIDAK diubah: bunyi+getar
+dari kode (ReminderSoundService/Player), perilaku 2 alarm, EXIF+crop foto,
+form FlowRow, struktur Beranda ronde 2, tanpa permission INTERNET.
+
+### 1. Header Beranda: varian 4 fase hari
+Dulu ilustrasi selalu fajar walau ucapan sudah "Selamat malam". Sekarang
+`Dates.phaseOf(hour)` (batas sama persis dengan sapaan) memilih varian
+`PhaseScenery` di header:
+- PAGI 04.00–10.59: fajar (persis ronde 2) — gradasi biru langit → krem peach.
+- SIANG 11.00–14.59: gradasi biru terang, matahari tinggi kecil, awan lebih
+  banyak, bukit hijau terang.
+- SORE 15.00–18.59: gradasi sunset oranye → pink, matahari besar rendah di
+  cakrawala, awan kemerahan, bukit lebih gelap.
+- MALAM 19.00–03.59: gradasi indigo → navy → ungu gelap, bulan sabit (Path
+  EvenOdd) + 12 bintang, siluet bukit gelap, teks putih/sub biru pucat kontras,
+  chip jam berlatar putih transparan.
+Semua vektor Canvas — tanpa aset gambar.
+
+### 2. Design-fidelity semua menu vs mockup
+Audit layar-per-layar terhadap 14 layar mockup final:
+- Harian: time-block kini SATU SoftCard — label jam tebal + titik warna
+  kategori + judul + pill kategori pastel; slot kosong = titik abu + teks
+  lembut "Slot kosong — belum ada kegiatan. Isi kegiatan →"; legenda
+  "Titik warna = kategori:"; Checklist jadi kartu terpisah
+  "✅ Checklist Hari Ini"; tombol bawah GradientButton "+ Isi Kegiatan di
+  Jam Kosong" & "📄 Export PDF Hari Ini" (dulu Material biru polos).
+- Mingguan: kartu hari SoftCard dengan pita gradasi berbeda per hari +
+  pill "Hari ini" + tombol tambah lingkaran pastel; slot kosong lembut
+  "+ Isi kegiatan"; tombol bawah GradientButton Export PDF.
+- Bulanan: grid dalam SoftCard; tanggal terpilih = kotak rounded GRADASI
+  fajar (peach→coral→biru langit) dengan teks putih & titik kategori putih;
+  hari ini = pastel biru + berbingkai biru; state kosong tanggal terpilih
+  berilustrasi (DawnIllustration) + ajakan mengisi.
+- Tahunan: kartu "Target Besar {tahun}" (total target tercapai +
+  GradientBar); kartu kuartal SoftCard + pita gradasi per kuartal + pill
+  "▶ Sekarang" + GradientBar per kuartal & per target
+  (LinearProgressIndicator Material hilang dari app).
+- Kalender: grid dalam SoftCard; state kosong tanggal terpilih berilustrasi
+  (awan/matahari/bukit) + ajakan isi kegiatan; kartu Year View SoftCard.
+- Reminder/Pengaturan: tombol Tes & Izinkan Notifikasi = GradientButton.
+- Profil: kartu Material → SoftCard radius 18.
+- Export: pilihan periode = ubin 2×2 mockup (pita gradasi + ikon + rentang,
+  terpilih berbingkai oranye).
+Bahasa visual disatukan ulang: SoftCard radius 18, latar pastel #F4F9FB,
+bottom nav ronde 2 tidak berubah.
+
+### 3–4. Detail: Tandai Selesai & Tunda 1 Hari → langsung ke Beranda
+Kedua tombol kini memakai varian ViewModel berkembalian (callback dipanggil
+SETELAH simpan Room + penjadwalan ulang alarm berhasil), lalu TodoApp
+menavigasi ke `Screen.Home` (Detail ter-pop, bottom nav Beranda aktif).
+Aturan Back HP (peta induk tetap) tidak berubah.
+
+### 5. Reset nada bawaan HP — logika ToneResolver
+Satu resolver: `reminder/ToneResolver.kt` (`effectiveToneUri` /
+`effectiveToneLabel`). Semua jalur (penjadwalan alarm, tes, preview, Detail)
+lewat sini.
+- GLOBAL (`AppPrefs.globalRingtoneUri`): `null` = Bawaan HP (default);
+  `"silent"` = senyap/getar; URI lain = nada kustom. TonePicker global punya
+  opsi TERATAS "🎵 Bawaan HP (default)": memilihnya menghapus URI kustom
+  (menyimpan null + nama "Bawaan HP").
+- PER KEGIATAN (`ActivityEntity.ringtoneUri`): `null` = Ikuti global;
+  sentinel `"default"` (`AppPrefs.RINGTONE_DEFAULT`) = override EKSPLISIT
+  Bawaan HP — menang atas global kustom; `"silent"` = senyap; URI lain =
+  kustom. Form menyediakan 3 mode: Ikuti global / Bawaan HP (default) /
+  Atur Sendiri.
+- Hasil resolver `null` berarti default sistem: ReminderSoundPlayer
+  menerjemahkannya ke rantai bawaan berjenjang — nada ALARM bawaan →
+  NOTIFIKASI bawaan → DERING bawaan. Preview ToneField untuk default juga
+  memutar jalur yang sama.
+
+### 6. PDF disamakan dengan mockup Preview PDF
+`PdfExporter` ditulis ulang (A4 portrait):
+- Header band gradasi fajar selebar halaman + art vektor (matahari gradasi
+  + halo, awan putih, bukit dua lapis), "Todo Planner" + "Laporan kegiatan
+  — {nama}" di atas band; judul "Laporan {Periode} — {Bulan Tahun}",
+  subjudul "{nama} • {rentang periode} • {filter kategori}".
+- Kartu Ringkasan Progress faktual: total, selesai + %, belum selesai, dan
+  (bila ada datanya) kategori paling banyak selesai / paling banyak belum
+  selesai — semua diturunkan dari data asli user.
+- Tabel Kegiatan/Tanggal/Kategori/Status: kategori = pill pastel rounded
+  rect + teks berwarna gelap kategorinya; status "✓ Selesai" hijau /
+  "Mendatang". (Di layar Preview app, kegiatan lampau yang belum selesai
+  dilabeli "Belum selesai".)
+- Catatan periode HANYA dari fakta data di atas — tidak ada narasi
+  karangan seperti contoh mockup.
+- Footer tiap halaman: kiri "Dicetak {d MMMM yyyy, HH.mm} • Todo Planner
+  (full lokal & offline)", kanan "Halaman X dari Y".
+- Paginasi dari simulasi tata letak: tinggi tiap baris dihitung dulu
+  (judul membungkus maks 2 baris + elipsis), baris dialihkan ke halaman
+  berikutnya sebelum melewati footer — tidak ada teks terpotong.
+Layar Preview di app meniru tata letak yang sama (band + art + ringkasan +
+tabel pill + footer) dan tombolnya kini "⬇️ Simpan PDF" gradasi, "📤 Bagikan
+PDF…", "‹ Ubah Periode / Kategori".
+
+### Hasil build ronde 3
+- **Status: BERHASIL — `BUILD SUCCESSFUL` (Gradle 8.7 offline, local-repo;
+  build final 4m, hanya warning deprecation lama).** Sempat 1 error
+  integrasi (`clip` belum diimpor di CalendarScreen) — diperbaiki lalu
+  build ulang lulus. Source di folder ini identik byte-per-byte dengan
+  source yang ter-build (diverifikasi `diff -rq` terhadap salinan build).
+- **APK debug baru:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **16.936.408 byte (±16,2 MB)**, sha256
+  `5cb0f90d66b536a5da4116a8a8291a79d8403b30591b2441039ed785f0b70d81`;
+  salinan praktis `../TodoPlanner-debug.apk` sudah ditimpa dari APK ini
+  (hash sama, diverifikasi ulang setelah build final: BUILD SUCCESSFUL
+  rc=0, integritas zip OK, 157 entri). Catatan: hash berbeda dari draf
+  build paralel sebelumnya karena build debug tidak byte-reproducible
+  (timestamp zip) — ukuran & isi kode identik.
+- Terverifikasi pada APK: signature debug valid (`apksigner verify`
+  lolos); package `id.rama.todoplanner` v1.0, minSdk 26, targetSdk 34;
+  permission TANPA INTERNET (POST_NOTIFICATIONS, SCHEDULE_EXACT_ALARM,
+  RECEIVE_BOOT_COMPLETED, VIBRATE, FOREGROUND_SERVICE,
+  FOREGROUND_SERVICE_MEDIA_PLAYBACK, WAKE_LOCK, WRITE_EXTERNAL_STORAGE
+  maxSdk 28 untuk PDF di Android lama); string dex memuat
+  "Bawaan HP (default)", "+ Isi Kegiatan di Jam Kosong", "Ringkasan
+  Progress".
+- **Catatan proses jujur:** ronde ini dikerjakan dua jalur implementasi
+  paralel di folder yang sama (seperti ronde 2); keduanya direkonsiliasi
+  menjadi SATU basis kode di atas sebelum build final (duplikasi
+  `DayPhase`/`PhaseIllustration` dibuang, API ToneResolver disatukan).
+- **Catatan jujur:** build debug; verifikasi di VM sebatas compile +
+  signature + badging + isi dex. Varian header 4 fase, fidelity desain,
+  reset nada, dan tampilan PDF baru terbukti setelah Rama meng-install
+  APK ini dan mengujinya di HP-nya.

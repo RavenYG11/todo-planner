@@ -46,5 +46,15 @@ class AppPrefs(context: Context) {
 
     companion object {
         const val RINGTONE_SILENT = "silent"
+
+        /**
+         * Sentinel eksplisit "Bawaan HP (default)" — RONDE 3.
+         * Dipakai terutama PER KEGIATAN: nilai ini berarti "paksa nada default
+         * sistem", BUKAN "ikuti global" (ikuti global = ringtoneUri null).
+         * Untuk nada GLOBAL, memilih Bawaan HP = menghapus URI kustom
+         * (globalRingtoneUri disimpan null) — hasil akhirnya sama: default sistem.
+         * Resolver tunggalnya: reminder/ToneResolver.kt.
+         */
+        const val RINGTONE_DEFAULT = "default"
     }
 }

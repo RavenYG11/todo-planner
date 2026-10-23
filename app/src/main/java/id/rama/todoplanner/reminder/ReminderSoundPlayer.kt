@@ -169,7 +169,11 @@ object ReminderSoundPlayer {
      */
     private fun resolvePlayableUri(context: Context, toneUriString: String?): Uri? {
         val candidates = ArrayList<Uri>()
-        if (!toneUriString.isNullOrBlank() && toneUriString != AppPrefs.RINGTONE_SILENT) {
+        // Sentinel "default" (ronde 3) & null & kosong = default sistem: JANGAN
+        // pernah di-parse sebagai URI — langsung jatuh ke rantai bawaan di bawah.
+        if (!toneUriString.isNullOrBlank() && toneUriString != AppPrefs.RINGTONE_SILENT &&
+            toneUriString != AppPrefs.RINGTONE_DEFAULT
+        ) {
             try { candidates.add(Uri.parse(toneUriString)) } catch (e: Exception) { /* lewati */ }
         }
         listOf(
