@@ -1,5 +1,7 @@
 package id.rama.todoplanner.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
@@ -43,6 +44,9 @@ import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.components.AvatarGradients
 import id.rama.todoplanner.ui.components.AvatarView
+import id.rama.todoplanner.ui.components.DawnHeader
+import id.rama.todoplanner.ui.components.GradientButton
+import id.rama.todoplanner.ui.components.PhotoCropper
 import java.time.LocalTime
 
 /**
@@ -56,12 +60,26 @@ fun ProfileScreen(vm: AppViewModel, onSaved: () -> Unit) {
     var colorIndex by remember { mutableStateOf(profile.colorIndex) }
     var emoji by remember { mutableStateOf(profile.emoji) }
 
+    // Setelah memilih foto → layar crop manual (geser/zoom/putar) dulu, baru disimpan.
+    var cropUri by remember { mutableStateOf<Uri?>(null) }
     val photoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) vm.savePhotoFromUri(uri)
+        if (uri != null) cropUri = uri
+    }
+    cropUri?.let { uri ->
+        BackHandler { cropUri = null }
+        PhotoCropper(
+            uri = uri,
+            onCancel = { cropUri = null },
+            onConfirm = { bmp, rect ->
+                vm.saveCroppedPhoto(bmp, rect)
+                cropUri = null
+            }
+        )
+        return
     }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("👤 Profil & Personalisasi", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        DawnHeader("👤 Profil & Personalisasi")
         Spacer(Modifier.height(12.dp))
 
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -85,12 +103,18 @@ fun ProfileScreen(vm: AppViewModel, onSaved: () -> Unit) {
 
                 Text("Foto Profil", fontWeight = FontWeight.Bold)
                 Text(if (profile.photoPath.isBlank()) "Belum ada foto" else "Foto aktif ✓")
-                Button(
+                GradientButton(
+                    text = "📷 Pilih Foto dari Galeri",
                     onClick = { photoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    modifier = Modifier.fillMaxWidth()
-                ) { Text("📷 Pilih Foto dari Galeri") }
+                    modifier = Modifier.fillMaxWidth(),
+                    mint = true
+                )
                 if (profile.photoPath.isNotBlank()) {
-                    OutlinedButton(onClick = { vm.removePhoto() }, modifier = Modifier.fillMaxWidth()) { Text("🗑️ Hapus Foto") }
+                    Spacer(Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { vm.rotatePhoto() }, modifier = Modifier.weight(1f)) { Text("🔄 Putar 90°") }
+                        OutlinedButton(onClick = { vm.removePhoto() }, modifier = Modifier.weight(1f)) { Text("🗑️ Hapus Foto") }
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
 
@@ -114,10 +138,11 @@ fun ProfileScreen(vm: AppViewModel, onSaved: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                Button(
+                GradientButton(
+                    text = "💾 Simpan Profil",
                     onClick = { vm.saveProfile(name.trim(), colorIndex, emoji); onSaved() },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("💾 Simpan Profil") }
+                )
             }
         }
     }

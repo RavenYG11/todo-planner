@@ -1,5 +1,6 @@
 package id.rama.todoplanner.ui
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -9,12 +10,16 @@ import id.rama.todoplanner.TodoApplication
 import id.rama.todoplanner.data.ActivityEntity
 import id.rama.todoplanner.data.TargetEntity
 import id.rama.todoplanner.reminder.ReminderScheduler
+import id.rama.todoplanner.ui.components.CropRectFrac
+import id.rama.todoplanner.ui.components.PhotoStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Snapshot profil & pengaturan (sumbernya AppPrefs) supaya Compose recompose saat berubah. */
@@ -23,6 +28,8 @@ data class ProfileState(
     val colorIndex: Int,
     val emoji: String,
     val photoPath: String,
+    /** Waktu ubah file foto — memaksa avatar dimuat ulang walau path tidak berubah (putar/crop). */
+    val photoStamp: Long,
     val globalToneUri: String?,
     val globalToneName: String,
     val themeMode: String
@@ -42,7 +49,10 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
 
     private fun readProfile() = ProfileState(
         name = prefs.userName, colorIndex = prefs.avatarColorIndex, emoji = prefs.avatarEmoji,
-        photoPath = prefs.avatarPhotoPath, globalToneUri = prefs.globalRingtoneUri,
+        photoPath = prefs.avatarPhotoPath,
+        photoStamp = prefs.avatarPhotoPath.takeIf { it.isNotBlank() }
+            ?.let { File(it).takeIf { f -> f.exists() }?.lastModified() } ?: 0L,
+        globalToneUri = prefs.globalRingtoneUri,
         globalToneName = prefs.globalRingtoneName, themeMode = prefs.themeMode
     )
     private fun refreshProfile() { _profile.value = readProfile() }
@@ -54,15 +64,41 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
         refreshProfile()
     }
 
-    /** Salin foto dari photo picker ke penyimpanan internal aplikasi (persisten & lokal). */
+    /**
+     * Salin foto dari photo picker ke penyimpanan internal (persisten & lokal).
+     * PERBAIKAN RONDE 1: orientasi EXIF kini di-bake ke piksel (dulu byte mentah
+     * disalin begitu saja → foto tampil miring di avatar).
+     */
     fun savePhotoFromUri(uri: Uri) {
         viewModelScope.launch {
             val target = File(app.filesDir, "profile_photo.jpg")
-            app.contentResolver.openInputStream(uri)?.use { input ->
-                target.outputStream().use { input.copyTo(it) }
+            val ok = withContext(Dispatchers.IO) { PhotoStore.importPhoto(app, uri, target) }
+            if (ok) {
+                prefs.avatarPhotoPath = target.absolutePath
+                refreshProfile()
             }
-            prefs.avatarPhotoPath = target.absolutePath
-            refreshProfile()
+        }
+    }
+
+    /** Simpan hasil layar crop manual (bitmap kerja + jendela crop ter-normalisasi). */
+    fun saveCroppedPhoto(bitmap: Bitmap, rect: CropRectFrac) {
+        viewModelScope.launch {
+            val target = File(app.filesDir, "profile_photo.jpg")
+            val ok = withContext(Dispatchers.IO) { PhotoStore.saveCropBitmap(bitmap, rect, target) }
+            if (ok) {
+                prefs.avatarPhotoPath = target.absolutePath
+                refreshProfile()
+            }
+        }
+    }
+
+    /** Putar foto profil tersimpan 90° searah jarum jam (pengaturan manual di Profil). */
+    fun rotatePhoto() {
+        val path = prefs.avatarPhotoPath
+        if (path.isBlank()) return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) { PhotoStore.rotateClockwise(File(path)) }
+            if (ok) refreshProfile()
         }
     }
 

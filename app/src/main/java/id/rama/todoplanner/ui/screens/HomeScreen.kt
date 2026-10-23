@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,10 +37,9 @@ import id.rama.todoplanner.domain.reminderDateTime
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.Screen
 import id.rama.todoplanner.ui.components.AvatarView
+import id.rama.todoplanner.ui.components.GradientButton
 import id.rama.todoplanner.ui.components.RingProgress
-import id.rama.todoplanner.ui.theme.Mint
-import id.rama.todoplanner.ui.theme.Peach
-import id.rama.todoplanner.ui.theme.SkyBlue
+import id.rama.todoplanner.ui.theme.Ink
 import kotlinx.coroutines.delay
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -69,23 +67,28 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
     }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        // Header Langit Pagi: gradasi + matahari sederhana via lingkaran warna.
+        // Header Langit Pagi sesuai mockup final: gradasi fajar TERANG
+        // (biru langit pucat -> krem peach) dengan teks tinta gelap.
         Box(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                .background(Brush.linearGradient(listOf(SkyBlue, Peach, Mint))).padding(16.dp)
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color(0xFFCDEBFF), Color(0xFFEAF7FF), Color(0xFFFFE7CF))
+                    )
+                ).padding(16.dp)
         ) {
             Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(today.format(Dates.fullDate), color = Color.White, modifier = Modifier.weight(1f))
-                    Text("🕐 " + now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White)
+                    Text(today.format(Dates.fullDate), color = Ink, modifier = Modifier.weight(1f))
+                    Text("🕐 " + now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Ink)
                 }
                 Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AvatarView(profile.photoPath, profile.name, profile.emoji, profile.colorIndex, 46.dp)
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text(Dates.greeting(now.hour), color = Color.White, fontSize = 13.sp)
-                        Text("Halo, ${profile.name}!", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(Dates.greeting(now.hour), color = Ink, fontSize = 13.sp)
+                        Text("Halo, ${profile.name}!", color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -127,8 +130,11 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
             }
         }
         Spacer(Modifier.height(12.dp))
-        Button(onClick = { onNavigate(Screen.Export) }, modifier = Modifier.fillMaxWidth()) {
-            Text("📄 Export PDF")
-        }
+        GradientButton(
+            text = "📄 Export PDF",
+            onClick = { onNavigate(Screen.Export) },
+            modifier = Modifier.fillMaxWidth(),
+            mint = true
+        )
     }
 }

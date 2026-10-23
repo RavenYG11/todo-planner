@@ -118,6 +118,7 @@ app/src/main/java/id/rama/todoplanner/
 - **APK debug:** `app/build/outputs/apk/debug/app-debug.apk` — **16.788.744 byte (±16,0 MB)**,
   sha256 `9de295a05095117af3676a63368401e7c92679e9a9ee447199721d083ddf1c4c`.
   Salinan praktis juga ada di `../TodoPlanner-debug.apk` (isi identik, hash sama).
+- **APK ini sudah digantikan oleh hasil Perbaikan Ronde 1 (#85) — lihat bab terakhir dokumen ini.**
 - **Terverifikasi pada APK:** package `id.rama.todoplanner`, versionName `1.0`, minSdk 26, targetSdk 34;
   permission hanya POST_NOTIFICATIONS, SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED, VIBRATE
   (**TANPA permission INTERNET**); signature debug valid (`apksigner verify` lolos).
@@ -151,3 +152,80 @@ VM awalnya tanpa Java/SDK/Gradle. Yang dilakukan, berurutan:
    (hash sha256 di atas membuktikan isinya sama persis).
 7. Cache dependensi offline (304 MB) tertinggal di VM (`~/toolchain/build-copy/local-repo`) bila
    perlu build ulang offline; folder `local-repo/` di proyek ini aman dihapus (sudah masuk .gitignore).
+
+## Perbaikan Ronde 1 — Uji HP (#85, 24 Okt 2026)
+
+APK pertama (#83) diuji langsung oleh Rama di HP Huawei-nya: aplikasi jalan, tetapi
+ada 3 masalah + 2 penyempurnaan perilaku atas permintaannya (00:44 WIB). Semua diperbaiki
+di ronde ini; tanpa QA terpisah — APK hasil langsung diserahkan ke Rama.
+
+### 1. Form mematah + restyle ke mockup "Langit Pagi"
+- **Akar masalah:** baris chip di Form Tambah/Edit Kegiatan memakai `Row` biasa.
+  Bila total lebar chip melebihi layar, chip terakhir (Tahunan / 1 jam sebelum /
+  Kesehatan) terhimpit ke sisa ruang sempit → teks menumpuk per huruf jadi kolom
+  vertikal; baris 3 tombol Tanggal/Mulai/Selesai juga saling desak sampai tombol
+  "Selesai" jadi lingkaran raksasa.
+- **Perbaikan:** `ChipRow` ditulis ulang memakai `FlowRow` + komponen `PastelChip`
+  baru (lebar mengikuti konten, membungkus rapi ke baris berikut). Baris tombol
+  tanggal/jam juga jadi `FlowRow` berisi `OutlinedButton` proporsional.
+- **Restyle:** kepala layar Form & Profil memakai gradasi fajar mockup
+  (`DawnHeader`: biru langit → krem peach); chip terpilih = pastel sesuai aksen
+  per bagian (Template biru langit, Ulangi lavender, Reminder amber, Prioritas
+  coral, Kategori warna kategorinya) dengan label tinta; tombol utama
+  (Simpan Kegiatan, Simpan Profil, Tandai Selesai, Export PDF, Pilih Foto)
+  memakai `GradientButton` gradasi coral→peach / biru langit→mint; skema warna
+  Material menambah container pastel supaya chip bawaan di layar lain ikut lembut.
+  File diubah: `ui/screens/FormScreen.kt`, `ui/screens/ProfileScreen.kt`,
+  `ui/screens/DetailScreen.kt`, `ui/screens/HomeScreen.kt`,
+  `ui/components/Common.kt`, `ui/theme/Theme.kt`.
+
+### 2. Foto profil miring → EXIF otomatis + crop manual penuh
+- **Akar masalah:** foto dari galeri disalin sebagai byte JPEG mentah; penampil
+  bitmap tidak menerapkan tag orientasi EXIF → foto tampil berputar/miring.
+- **Perbaikan:** util baru `ui/components/PhotoStore.kt` (framework
+  `android.media.ExifInterface` — tanpa dependensi baru): saat impor, orientasi
+  EXIF di-bake ke piksel bitmap, diperkecil maks 1024px, disimpan sebagai JPEG.
+- **Crop manual penuh** (`ui/components/PhotoCropper.kt`, permintaan Rama 00:44):
+  setelah memilih foto, muncul layar crop — geser (drag), zoom (cubit/pinch),
+  dan putar 90° di dalam bingkai persegi berguide lingkaran; hasil crop itulah
+  yang disimpan. Di Profil juga ada tombol **Putar 90°** untuk foto yang sudah
+  tersimpan (`AppViewModel.rotatePhoto`).
+- **Catatan:** foto lama yang sudah tersimpan miring dari versi sebelumnya tetap
+  miring sampai user memilih ulang foto (masuk crop otomatis) atau menekan
+  tombol Putar 90° di Profil.
+
+### 3. Reminder senyap & tidak getar → kanal baru + perilaku 2 alarm
+- **Akar masalah:** (a) di `ReminderReceiver` lama, `enableVibration(true)` hanya
+  dipanggil di cabang nada senyap — cabang nada pilihan & bawaan tidak pernah
+  mengaktifkan getar dan tidak ada pola getar; (b) channel lama `reminder_*`
+  bersifat immutable — sekali tercipta dengan konfigurasi salah di HP user,
+  suara/getarnya terkunci dan tidak bisa dikoreksi aplikasi.
+- **Perbaikan channel:** ID channel BARU `reminder2_<kunci nada>` (IMPORTANCE_HIGH),
+  suara dari URI nada pilihan kegiatan (fallback nada notifikasi bawaan HP),
+  `enableVibration(true)` + pola getar eksplisit `0,250,150,250` untuk semua
+  cabang (termasuk mode senyap = getar saja); channel skema lama `reminder_*`
+  dibersihkan saat receiver berjalan. Suara + getar berlaku untuk SEMUA
+  prioritas kegiatan — prioritas tidak menggerbangi notifikasi.
+- **Perubahan perilaku (permintaan Rama 00:44):** opsi reminder "Tepat waktu"
+  DIHAPUS dari form. Pilihan sekarang: Tanpa / 15 menit sebelum / 1 jam sebelum /
+  1 hari sebelum. Setiap kegiatan ber-reminder kini mendapat **2 alarm**:
+  pengingat awal (jam mulai − offset; isi notifikasi "⏰ 15 menit lagi: [judul]")
+  dan alarm pas jam mulai ("Mulai sekarang: [judul]"). "Tanpa" = tidak ada
+  notifikasi sama sekali. Nada pilihan kegiatan dipakai di kedua notifikasi.
+  Alarm tunggal skema lama ikut dibatalkan saat penjadwalan ulang agar tidak
+  ada bunyi ganda dari versi sebelumnya. Kegiatan lama bernilai 0 ("Tepat
+  waktu") diperlakukan sebagai "Pas jam mulai" dan di form tidak menampilkan
+  chip terpilih sampai user memilih ulang.
+- File diubah: `reminder/ReminderReceiver.kt`, `reminder/ReminderScheduler.kt`,
+  `ui/screens/FormScreen.kt` (opsi), `ui/screens/DetailScreen.kt` (label).
+
+### Hasil build ronde 1
+- **Status: BERHASIL — `BUILD SUCCESSFUL` (2m 29s, pola offline local-repo yang sama).**
+- **APK debug baru:** `app/build/outputs/apk/debug/app-debug.apk` — **16.835.209 byte**,
+  sha256 `9fe57ab2689d39c695579c6eafcf27fb3a363158e5b684b8e947d7b615427bad`;
+  salinan praktis `../TodoPlanner-debug.apk` sudah ditimpa (hash sama).
+- Terverifikasi: signature v2 valid (`apksigner verify`), package
+  `id.rama.todoplanner` v1.0, permission sama seperti sebelumnya (TANPA INTERNET).
+- **Catatan jujur:** build debug; perbaikan runtime (bunyi/getar reminder, crop
+  foto, tampilan form) baru terbukti setelah Rama meng-install APK ini dan
+  mengujinya di HP-nya — verifikasi di VM sebatas compile + signature + badging.

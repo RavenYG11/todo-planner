@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -26,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.ui.AppViewModel
+import id.rama.todoplanner.ui.components.GradientButton
 import id.rama.todoplanner.ui.components.ringtoneTitle
 import java.time.LocalDate
 
@@ -33,7 +33,13 @@ private fun repeatLabel(rule: String) = when (rule) {
     "DAILY" -> "Harian"; "WEEKLY" -> "Mingguan"; "MONTHLY" -> "Bulanan"; "YEARLY" -> "Tahunan"; else -> "Tidak"
 }
 private fun reminderLabel(min: Int?) = when (min) {
-    null -> "Tanpa reminder"; 0 -> "Tepat waktu"; 15 -> "15 mnt sebelum"; 60 -> "1 jam sebelum"; 1440 -> "1 hari sebelum"; else -> "$min mnt sebelum"
+    // Perilaku ronde 1: setiap reminder aktif juga berbunyi pas jam mulai.
+    null -> "Tanpa reminder"
+    0 -> "Pas jam mulai" // data lama dari opsi "Tepat waktu" yang sudah dihapus
+    15 -> "15 mnt sebelum + pas mulai"
+    60 -> "1 jam sebelum + pas mulai"
+    1440 -> "1 hari sebelum + pas mulai"
+    else -> "$min mnt sebelum + pas mulai"
 }
 
 /** Detail Kegiatan: isi lengkap + nada terpilih + selesai/tunda/edit/hapus. */
@@ -75,9 +81,11 @@ fun DetailScreen(vm: AppViewModel, activityId: Long, dateEpochDay: Long, onEdit:
             }
         }
         Spacer(Modifier.height(14.dp))
-        Button(onClick = { vm.toggleDone(activity, dateEpochDay, !done) }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (done) "↩️ Batalkan Selesai" else "✓ Tandai Selesai")
-        }
+        GradientButton(
+            text = if (done) "↩️ Batalkan Selesai" else "✓ Tandai Selesai",
+            onClick = { vm.toggleDone(activity, dateEpochDay, !done) },
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = { vm.snoozeActivity(activity) }, modifier = Modifier.weight(1f)) { Text("⏰ Tunda 1 Hari") }

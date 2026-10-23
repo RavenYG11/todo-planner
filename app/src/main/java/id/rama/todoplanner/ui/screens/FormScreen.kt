@@ -2,6 +2,8 @@ package id.rama.todoplanner.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,11 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,14 +39,25 @@ import id.rama.todoplanner.data.ActivityEntity
 import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.components.Categories
+import id.rama.todoplanner.ui.components.CategoryColors
+import id.rama.todoplanner.ui.components.DawnHeader
+import id.rama.todoplanner.ui.components.GradientButton
+import id.rama.todoplanner.ui.components.PastelChip
 import id.rama.todoplanner.ui.components.ToneField
+import id.rama.todoplanner.ui.theme.AmberSoft
+import id.rama.todoplanner.ui.theme.Coral
+import id.rama.todoplanner.ui.theme.Lavender
+import id.rama.todoplanner.ui.theme.SkyBlue
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
 private val REPEAT_OPTIONS = listOf("NONE" to "Tidak", "DAILY" to "Harian", "WEEKLY" to "Mingguan", "MONTHLY" to "Bulanan", "YEARLY" to "Tahunan")
-private val REMINDER_OPTIONS = listOf<Int?>(null, 0, 15, 60, 1440)
-private val REMINDER_LABELS = listOf("Tanpa", "Tepat waktu", "15 mnt sebelum", "1 jam sebelum", "1 hari sebelum")
+// Opsi "Tepat waktu" DIHAPUS (permintaan Rama, ronde 1): alarm pas jam mulai kini
+// otomatis untuk semua kegiatan ber-reminder. Nilai lama 0 di data lama ditangani
+// defensif di bawah (tidak ada chip terpilih; user memilih ulang bila membuka form).
+private val REMINDER_OPTIONS = listOf<Int?>(null, 15, 60, 1440)
+private val REMINDER_LABELS = listOf("Tanpa", "15 mnt sebelum", "1 jam sebelum", "1 hari sebelum")
 private val TEMPLATE_OPTIONS = listOf("Harian", "Mingguan", "Bulanan", "Tahunan")
 private val PRIORITY_OPTIONS = listOf("Rendah", "Sedang", "Tinggi")
 
@@ -53,7 +65,7 @@ private val PRIORITY_OPTIONS = listOf("Rendah", "Sedang", "Tinggi")
  * Form Tambah/Edit Kegiatan — semua field wajib dari mockup.
  * Perubahan field dilaporkan ke TodoApp (onDirtyChange) untuk konfirmasi Back HP.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun FormScreen(
     vm: AppViewModel,
@@ -106,37 +118,51 @@ fun FormScreen(
     LaunchedEffect(dirty) { onDirtyChange(dirty) }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text(if (editId == null) "➕ Tambah Kegiatan" else "✏️ Edit Kegiatan", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(10.dp))
+        DawnHeader(if (editId == null) "➕ Tambah Kegiatan" else "✏️ Edit Kegiatan")
+        Spacer(Modifier.height(12.dp))
 
         OutlinedTextField(title, { title = it; titleError = false }, label = { Text("Judul kegiatan") },
             isError = titleError, modifier = Modifier.fillMaxWidth())
         if (titleError) Text("Judul wajib diisi", color = Color.Red)
         Spacer(Modifier.height(8.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { showDatePicker = true }) { Text("📅 " + date.format(Dates.shortDate)) }
-            Button(onClick = { pickingTime = "start" }) { Text("Mulai: " + Dates.formatTime(startMin)) }
-            Button(onClick = { pickingTime = "end" }) { Text("Selesai: " + Dates.formatTime(endMin)) }
+        // FlowRow: tombol tanggal/jam lebar mengikuti konten dan membungkus rapi —
+        // tidak saling desak seperti Row lama (tombol 'Selesai' sempat jadi lingkaran raksasa).
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(onClick = { showDatePicker = true }) { Text("📅 " + date.format(Dates.shortDate)) }
+            OutlinedButton(onClick = { pickingTime = "start" }) { Text("Mulai: " + Dates.formatTime(startMin)) }
+            OutlinedButton(onClick = { pickingTime = "end" }) { Text("Selesai: " + Dates.formatTime(endMin)) }
         }
         if (startMin != null) TextButton(onClick = { startMin = null; endMin = null }) { Text("Hapus jam (jadikan checklist)") }
         Spacer(Modifier.height(8.dp))
 
         Text("Template Tujuan", fontWeight = FontWeight.Bold)
-        ChipRow(TEMPLATE_OPTIONS, template) { template = it }
+        ChipRow(TEMPLATE_OPTIONS, template, { SkyBlue }) { template = it }
         Text("Ulangi", fontWeight = FontWeight.Bold)
-        ChipRow(REPEAT_OPTIONS.map { it.second }, REPEAT_OPTIONS.first { it.first == repeat }.second) { label ->
+        ChipRow(REPEAT_OPTIONS.map { it.second }, REPEAT_OPTIONS.first { it.first == repeat }.second, { Lavender }) { label ->
             repeat = REPEAT_OPTIONS.first { it.second == label }.first
         }
         Text("Reminder", fontWeight = FontWeight.Bold)
-        ChipRow(REMINDER_LABELS, REMINDER_LABELS[REMINDER_OPTIONS.indexOf(reminder)]) { label ->
+        val reminderIdx = REMINDER_OPTIONS.indexOf(reminder)
+        ChipRow(
+            REMINDER_LABELS,
+            if (reminderIdx >= 0) REMINDER_LABELS[reminderIdx] else "",
+            { AmberSoft }
+        ) { label ->
             reminder = REMINDER_OPTIONS[REMINDER_LABELS.indexOf(label)]
         }
         if (reminder != null) {
             Text("Nada Dering", fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = !customTone, onClick = { customTone = false }, label = { Text("Ikut Pengaturan") })
-                FilterChip(selected = customTone, onClick = { customTone = true }, label = { Text("Atur Sendiri") })
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(vertical = 4.dp)
+            ) {
+                PastelChip(selected = !customTone, text = "Ikut Pengaturan", accent = SkyBlue) { customTone = false }
+                PastelChip(selected = customTone, text = "Atur Sendiri", accent = SkyBlue) { customTone = true }
             }
             if (customTone) {
                 ToneField(currentUri = toneUri ?: profile.globalToneUri, label = "Nada Dering Kegiatan") { uri, name ->
@@ -147,15 +173,16 @@ fun FormScreen(
             }
         }
         Text("Prioritas", fontWeight = FontWeight.Bold)
-        ChipRow(PRIORITY_OPTIONS, priority) { priority = it }
+        ChipRow(PRIORITY_OPTIONS, priority, { Coral }) { priority = it }
         Text("Kategori", fontWeight = FontWeight.Bold)
-        ChipRow(Categories, category) { category = it }
+        ChipRow(Categories, category, { opt -> CategoryColors[opt] ?: SkyBlue }) { category = it }
         Spacer(Modifier.height(6.dp))
         OutlinedTextField(note, { note = it }, label = { Text("Catatan") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
         Spacer(Modifier.height(14.dp))
-        Button(
+        GradientButton(
+            text = "💾 Simpan Kegiatan",
             onClick = {
-                if (title.isBlank()) { titleError = true; return@Button }
+                if (title.isBlank()) { titleError = true; return@GradientButton }
                 val entity = (existing ?: ActivityEntity(title = "", dateEpochDay = date.toEpochDay())).copy(
                     title = title.trim(),
                     dateEpochDay = date.toEpochDay(),
@@ -175,7 +202,7 @@ fun FormScreen(
                 onSaved()
             },
             modifier = Modifier.fillMaxWidth()
-        ) { Text("💾 Simpan Kegiatan") }
+        )
     }
 
     if (showDatePicker) {
@@ -215,11 +242,26 @@ fun FormScreen(
     }
 }
 
+/**
+ * Baris chip pilihan — PERBAIKAN RONDE 1: dulu Row biasa sehingga chip terakhir
+ * terhimpit jadi kolom sempit (teks per huruf). Sekarang FlowRow: tiap chip lebar
+ * mengikuti konten dan membungkus rapi ke baris berikutnya.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChipRow(options: List<String>, selected: String, onSelect: (String) -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun ChipRow(
+    options: List<String>,
+    selected: String,
+    accent: (String) -> Color,
+    onSelect: (String) -> Unit
+) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         options.forEach { opt ->
-            FilterChip(selected = opt == selected, onClick = { onSelect(opt) }, label = { Text(opt, fontSize = 12.sp) })
+            PastelChip(selected = opt == selected, text = opt, accent = accent(opt)) { onSelect(opt) }
         }
     }
 }

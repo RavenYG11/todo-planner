@@ -4,9 +4,14 @@ import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -20,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,10 +59,89 @@ val AvatarGradients: List<List<Color>> = listOf(
     listOf(Color(0xFFF2CD7E), AmberSoft)
 )
 
+/** Warna tinta utama mockup. */
+val InkColor = Color(0xFF22333D)
+
+/**
+ * Tombol utama gradasi mockup "Langit Pagi":
+ * default coral→peach (CTA), [mint] = biru langit→mint untuk aksi sekunder besar.
+ */
+@Composable
+fun GradientButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    mint: Boolean = false,
+    enabled: Boolean = true
+) {
+    val colors = if (mint) listOf(Color(0xFF5FA9CE), Color(0xFF7FC48F))
+    else listOf(Color(0xFFF2A65A), Color(0xFFF28B82))
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                Brush.horizontalGradient(
+                    if (enabled) colors else colors.map { it.copy(alpha = 0.4f) }
+                )
+            )
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
+/** Kepala layar gradasi fajar lembut mockup (biru langit → krem peach). */
+@Composable
+fun DawnHeader(title: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(Color(0xFFCDEBFF), Color(0xFFEAF7FF), Color(0xFFFFE7CF))
+                )
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = InkColor)
+    }
+}
+
+/**
+ * Chip pilihan ala mockup: terpilih = pastel sesuai aksen + bingkai aksen + label tinta tebal;
+ * tidak terpilih = abu sangat muda + label abu. Lebar selalu mengikuti konten.
+ */
+@Composable
+fun PastelChip(selected: Boolean, text: String, accent: Color, onClick: () -> Unit) {
+    val bg = if (selected) accent.copy(alpha = 0.22f) else Color(0xFFF0F4F6)
+    val fg = if (selected) InkColor else Color(0xFF5B6E77)
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(bg)
+            .then(if (selected) Modifier.border(1.5.dp, accent, RoundedCornerShape(20.dp)) else Modifier)
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text, color = fg, fontSize = 12.5.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, maxLines = 1
+        )
+    }
+}
+
 /** Avatar lingkaran: foto galeri (crop tengah) bila ada; selain itu emoji / inisial nama. */
 @Composable
 fun AvatarView(photoPath: String, name: String, emoji: String, colorIndex: Int, size: Dp = 46.dp) {
-    val bitmap = remember(photoPath) {
+    // Kunci cache menyertakan waktu ubah file: foto yang diputar/diganti di path yang sama
+    // tetap dimuat ulang (path-nya tidak berubah). Dihitung segar tiap komposisi.
+    val stamp = if (photoPath.isNotBlank()) {
+        File(photoPath).takeIf { it.exists() }?.lastModified() ?: 0L
+    } else 0L
+    val bitmap = remember(photoPath, stamp) {
         if (photoPath.isNotBlank()) {
             val f = File(photoPath)
             if (f.exists()) BitmapFactory.decodeFile(f.absolutePath)?.asImageBitmap() else null

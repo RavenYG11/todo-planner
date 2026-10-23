@@ -27,7 +27,16 @@ private val LightColors = lightColorScheme(
     background = PaperBg,
     surface = Color.White,
     onBackground = Ink,
-    onSurface = Ink
+    onSurface = Ink,
+    // Container pastel "Langit Pagi" (ronde 1): chip terpilih & elemen sekunder
+    // tidak lagi biru Material pekat, melainkan pastel sesuai mockup.
+    primaryContainer = Color(0xFFE1F2FB),
+    onPrimaryContainer = Ink,
+    secondaryContainer = Color(0xFFFDE9E4),
+    onSecondaryContainer = Ink,
+    surfaceVariant = Color(0xFFF0F4F6),
+    onSurfaceVariant = Color(0xFF58707C),
+    outline = Color(0xFFD8E2E8)
 )
 
 private val DarkColors = darkColorScheme(
