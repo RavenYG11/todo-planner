@@ -114,4 +114,40 @@ app/src/main/java/id/rama/todoplanner/
 | 14 | Tombol Back HP peta induk tetap + form kotor konfirmasi + Beranda tekan 2× keluar | ✅ |
 
 ## Hasil Compile
-<!-- Diisi setelah build: status, path APK, ukuran. -->
+- **Status: BERHASIL — `BUILD SUCCESSFUL` (Gradle 8.7, AGP 8.5.2, Kotlin 2.0.20), 23 Okt 2026.**
+- **APK debug:** `app/build/outputs/apk/debug/app-debug.apk` — **16.788.744 byte (±16,0 MB)**,
+  sha256 `9de295a05095117af3676a63368401e7c92679e9a9ee447199721d083ddf1c4c`.
+  Salinan praktis juga ada di `../TodoPlanner-debug.apk` (isi identik, hash sama).
+- **Terverifikasi pada APK:** package `id.rama.todoplanner`, versionName `1.0`, minSdk 26, targetSdk 34;
+  permission hanya POST_NOTIFICATIONS, SCHEDULE_EXACT_ALARM, RECEIVE_BOOT_COMPLETED, VIBRATE
+  (**TANPA permission INTERNET**); signature debug valid (`apksigner verify` lolos).
+- **Gradle Wrapper** (`gradlew`, `gradle/wrapper/`) sudah dibuat — build berikutnya cukup `./gradlew assembleDebug`.
+
+### Perjalanan provisioning di VM (dicatat jujur — semua jalur yang dicoba)
+VM awalnya tanpa Java/SDK/Gradle. Yang dilakukan, berurutan:
+1. JDK 17 (Temurin) + Android command-line tools diunduh dengan curl → sdkmanager **gagal**:
+   proxy egress VM menolak tunneling Java (`HttpURLConnection.doTunneling` exception).
+2. Paket SDK dipasang **manual**: zip resmi platform-tools, platform android-34, build-tools 34.0.0
+   dari `dl.google.com/android/repository/` (URL persis dari `repository2-1.xml`) diekstrak ke layout SDK
+   + file `licenses/` diisi hash lisensi standar → aapt2/adb/android.jar terverifikasi ada.
+3. Gradle daemon awalnya **gagal total** ("Could not receive a message from the daemon"): penyebabnya
+   soket IPv6-mapped Java (`::ffff:127.0.0.1`) dicegat interceptor TCP VM (terbukti dengan uji
+   strace + client Java/Python). Solusi: `-Djava.net.preferIPv4Stack=true` di client & daemon.
+4. Unduhan dependensi Gradle lewat proxy **gagal acak** (MITM TLS + Apache HttpClient Gradle sering
+   kena "Connection reset"): CA proxy (`/run/hatch/cell-anchors/hatch-egress-ca.pem`) dimasukkan ke
+   truststore Java khusus — membantu sebagian, tapi reset tetap sering.
+5. Jalur yang akhirnya berhasil: **local Maven repo offline** — seluruh dependensi (700+ file artefak
+   publik dari Google Maven/Maven Central/Gradle Plugin Portal) diunduh dengan **curl** ke folder
+   `local-repo`, lalu Gradle build `--offline` (settings.gradle.kts sudah mengenal repo lokal ini
+   secara kondisional; di laptop user folder itu tidak ada sehingga repo online standar yang dipakai).
+   File varian Gradle Module Metadata (mis. `kotlin-gradle-plugin-2.0.20-gradle85.jar`,
+   `aapt2-...-linux.jar`) ikut dilengkapi. Satu-satunya error source nyata selama kompilasi:
+   `FormScreen.kt` memanggil konstruktor `ActivityEntity` tanpa `dateEpochDay` — sudah diperbaiki.
+6. Build final dijalankan pada salinan proyek terisolasi (menghindari bentrok dengan proses build
+   paralel lain di VM yang sama); **source-nya identik byte-per-byte** dengan folder ini — satu-satunya
+   perbedaan adalah 2 baris tambahan khusus VM di `gradle.properties` salinan
+   (`kotlin.compiler.execution.strategy=in-process` + `kotlin.daemon.jvmargs` IPv4) karena daemon
+   Kotlin juga terkena intersepsi soket VM. APK hasil build disalin ke path standar di folder ini
+   (hash sha256 di atas membuktikan isinya sama persis).
+7. Cache dependensi offline (304 MB) tertinggal di VM (`~/toolchain/build-copy/local-repo`) bila
+   perlu build ulang offline; folder `local-repo/` di proyek ini aman dihapus (sudah masuk .gitignore).
