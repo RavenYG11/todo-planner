@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.rama.todoplanner.domain.Dates
+import id.rama.todoplanner.domain.DayPhase
 import id.rama.todoplanner.domain.Occurrence
 import id.rama.todoplanner.domain.occurrencesBetween
 import id.rama.todoplanner.domain.reminderDateTime
@@ -41,8 +42,8 @@ import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.Screen
 import id.rama.todoplanner.ui.components.AvatarView
 import id.rama.todoplanner.ui.components.CategoryColors
-import id.rama.todoplanner.ui.components.DawnIllustration
 import id.rama.todoplanner.ui.components.GradientButton
+import id.rama.todoplanner.ui.components.PhaseScenery
 import id.rama.todoplanner.ui.components.PastelPill
 import id.rama.todoplanner.ui.components.RingProgress
 import id.rama.todoplanner.ui.components.SoftCard
@@ -125,32 +126,50 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
         modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
             .verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
-        // ===== Header fajar + ilustrasi (mockup .hero) =====
+        // ===== Header + ilustrasi PER FASE HARI (ronde 3) =====
+        // Dulu ilustrasi selalu fajar walau sudah malam. Kini gradasi + art + warna
+        // teks mengikuti fase jam HP: PAGI fajar / SIANG biru terang / SORE sunset /
+        // MALAM indigo-navy dengan bulan sabit & bintang (teks terang kontras).
+        val phase = Dates.phaseOf(now.hour)
+        val heroGradient = when (phase) {
+            DayPhase.PAGI -> listOf(Color(0xFFCDEBFF), Color(0xFFEAF7FF), Color(0xFFFFE7CF), Color(0xFFFFEDDC))
+            DayPhase.SIANG -> listOf(Color(0xFF9ED8FF), Color(0xFFCDEFFF), Color(0xFFEAF9FF), Color(0xFFFFF3D0))
+            DayPhase.SORE -> listOf(Color(0xFFFFD9A0), Color(0xFFFFB37E), Color(0xFFF78FB0), Color(0xFFFFC9B8))
+            DayPhase.MALAM -> listOf(Color(0xFF1D2742), Color(0xFF2E3A5C), Color(0xFF4A3A6B), Color(0xFF2A3358))
+        }
+        val heroInk = if (phase == DayPhase.MALAM) Color.White else Color(0xFF1E3A47)
+        val heroSub = when (phase) {
+            DayPhase.MALAM -> Color(0xFFC7D2E8)
+            DayPhase.SORE -> Color(0xFF7A4450)
+            else -> Color(0xFF58707C)
+        }
+        val chipBg = if (phase == DayPhase.MALAM) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.65f)
+        val chipFg = when (phase) {
+            DayPhase.MALAM -> Color(0xFFE8EEFA)
+            DayPhase.SORE -> Color(0xFF8A3B2E)
+            else -> Color(0xFF2B6E91)
+        }
         Box(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(Color(0xFFCDEBFF), Color(0xFFEAF7FF), Color(0xFFFFE7CF), Color(0xFFFFEDDC))
-                    )
-                )
+                .background(Brush.linearGradient(heroGradient))
         ) {
             Column {
                 Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            today.format(Dates.fullDate), color = Color(0xFF58707C),
+                            today.format(Dates.fullDate), color = heroSub,
                             fontSize = 12.5.sp, modifier = Modifier.weight(1f)
                         )
                         // Chip jam pill kanan atas (mockup: latar putih 65%)
                         Box(
                             modifier = Modifier.clip(RoundedCornerShape(20.dp))
-                                .background(Color.White.copy(alpha = 0.65f))
+                                .background(chipBg)
                                 .padding(horizontal = 9.dp, vertical = 4.dp)
                         ) {
                             Text(
                                 "🕐 " + now.format(DateTimeFormatter.ofPattern("HH.mm")) +
                                     if (zoneLabel.isNotBlank()) " $zoneLabel" else "",
-                                color = Color(0xFF2B6E91), fontSize = 11.sp, fontWeight = FontWeight.Bold
+                                color = chipFg, fontSize = 11.sp, fontWeight = FontWeight.Bold
                             )
                         }
                     }
@@ -161,18 +180,18 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
                         Column {
                             Text(
                                 "${Dates.greeting(now.hour)} ${Dates.phaseEmoji(now.hour)}",
-                                color = Color(0xFF58707C), fontSize = 12.sp
+                                color = heroSub, fontSize = 12.sp
                             )
                             Text(
-                                "Halo, ${profile.name}!", color = Color(0xFF1E3A47),
+                                "Halo, ${profile.name}!", color = heroInk,
                                 fontSize = 21.sp, fontWeight = FontWeight.Bold
                             )
                         }
                     }
                     Spacer(Modifier.height(9.dp))
-                    Text(Dates.phaseTagline(now.hour), color = Color(0xFF58707C), fontSize = 12.5.sp)
+                    Text(Dates.phaseTagline(now.hour), color = heroSub, fontSize = 12.5.sp)
                 }
-                DawnIllustration()
+                PhaseScenery(phase)
             }
         }
         Spacer(Modifier.height(12.dp))

@@ -138,13 +138,17 @@ fun TodoApp(vm: AppViewModel) {
             when (val s = screen) {
                 is Screen.Home -> HomeScreen(vm, onNavigate = { navigate(it) }, onOpenDetail = openDetail)
                 is Screen.Daily -> DailyScreen(vm, onOpenDetail = openDetail,
-                    onAddAt = { date, hour -> navigate(Screen.Form(presetDateEpochDay = date, presetStartMinutes = hour, presetTemplate = "Harian")) })
+                    onAddAt = { date, hour -> navigate(Screen.Form(presetDateEpochDay = date, presetStartMinutes = hour, presetTemplate = "Harian")) },
+                    onExport = { navigate(Screen.Export) })
                 is Screen.Weekly -> WeeklyScreen(vm, onOpenDetail = openDetail,
-                    onAddAt = { date -> navigate(Screen.Form(presetDateEpochDay = date, presetTemplate = "Mingguan")) })
+                    onAddAt = { date -> navigate(Screen.Form(presetDateEpochDay = date, presetTemplate = "Mingguan")) },
+                    onExport = { navigate(Screen.Export) })
                 is Screen.Monthly -> MonthlyScreen(vm, onOpenDetail = openDetail,
-                    onAddAt = { date -> navigate(Screen.Form(presetDateEpochDay = date, presetTemplate = "Bulanan")) })
+                    onAddAt = { date -> navigate(Screen.Form(presetDateEpochDay = date, presetTemplate = "Bulanan")) },
+                    onExport = { navigate(Screen.Export) })
                 is Screen.Yearly -> YearlyScreen(vm, onOpenDetail = openDetail,
-                    onAddAt = { date -> navigate(Screen.Form(presetDateEpochDay = date, presetTemplate = "Tahunan")) })
+                    onAddAt = { date -> navigate(Screen.Form(presetDateEpochDay = date, presetTemplate = "Tahunan")) },
+                    onExport = { navigate(Screen.Export) })
                 is Screen.Calendar -> CalendarScreen(vm, onOpenDetail = openDetail,
                     onAddAt = { date -> navigate(Screen.Form(presetDateEpochDay = date)) })
                 is Screen.Menu -> MenuScreen(onNavigate = { navigate(it) })
@@ -152,10 +156,15 @@ fun TodoApp(vm: AppViewModel) {
                 is Screen.Stats -> StatsScreen(vm)
                 is Screen.Settings -> SettingsScreen(vm, onNavigate = { navigate(it) })
                 is Screen.Export -> ExportScreen(onPreview = { period, anchor, cats -> navigate(Screen.PdfPreview(period, anchor, cats)) })
-                is Screen.PdfPreview -> PdfPreviewScreen(vm, period = s.period, anchorEpochDay = s.anchorEpochDay, categories = s.categories)
+                is Screen.PdfPreview -> PdfPreviewScreen(vm, period = s.period, anchorEpochDay = s.anchorEpochDay, categories = s.categories,
+                    onBack = { navigate(Screen.Export) })
                 is Screen.Detail -> DetailScreen(vm, activityId = s.activityId, dateEpochDay = s.dateEpochDay,
                     onEdit = { navigate(Screen.Form(editId = s.activityId)) },
-                    onAfterDelete = { navigate(parentOf(s)) })
+                    onAfterDelete = { navigate(parentOf(s)) },
+                    // RONDE 3: Tandai Selesai & Tunda 1 Hari -> langsung Beranda
+                    // (navigate mengganti layar aktif; Detail ter-pop dari tumpukan
+                    // logis dan bottom nav kembali menandai Beranda aktif).
+                    onGoHome = { navigate(Screen.Home) })
                 is Screen.Form -> FormScreen(vm, editId = s.editId, presetDateEpochDay = s.presetDateEpochDay,
                     presetStartMinutes = s.presetStartMinutes, presetTemplate = s.presetTemplate,
                     onDirtyChange = { formDirty = it },

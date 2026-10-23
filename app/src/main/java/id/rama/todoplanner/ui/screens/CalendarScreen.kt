@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -27,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,7 +36,10 @@ import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.domain.Occurrence
 import id.rama.todoplanner.domain.occurrencesBetween
 import id.rama.todoplanner.ui.AppViewModel
+import id.rama.todoplanner.ui.components.DawnScenery
 import id.rama.todoplanner.ui.components.PastelChip
+import id.rama.todoplanner.ui.components.SoftCard
+import id.rama.todoplanner.ui.theme.Ink
 import id.rama.todoplanner.ui.theme.SkyBlue
 import java.time.LocalDate
 import java.time.YearMonth
@@ -52,8 +55,8 @@ fun CalendarScreen(vm: AppViewModel, onOpenDetail: (Occurrence) -> Unit, onAddAt
     var ym by remember { mutableStateOf(YearMonth.now()) }
     var selected by remember { mutableStateOf(LocalDate.now()) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("🗓️ Kalender", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB)).padding(16.dp)) {
+        Text("🗓️ Kalender", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = id.rama.todoplanner.ui.theme.Ink)
         Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
             PastelChip(selected = mode == "Bulan", text = "Bulan", accent = SkyBlue) { mode = "Bulan" }
             PastelChip(selected = mode == "Tahun", text = "Tahun", accent = SkyBlue) { mode = "Tahun" }
@@ -63,17 +66,38 @@ fun CalendarScreen(vm: AppViewModel, onOpenDetail: (Occurrence) -> Unit, onAddAt
         if (mode == "Bulan") {
             val monthOccs = remember(activities, ym) { activities.occurrencesBetween(ym.atDay(1), ym.atEndOfMonth()) }
             val selectedOccs = monthOccs.filter { it.date == selected }
-            MonthGrid(
-                ym = ym, activitiesByDay = monthOccs.groupBy { it.date }, selected = selected,
-                onPrev = { ym = ym.minusMonths(1) }, onNext = { ym = ym.plusMonths(1) },
-                onSelect = { selected = it }
-            )
+            SoftCard(modifier = Modifier.fillMaxWidth()) {
+                Box(modifier = Modifier.padding(12.dp)) {
+                    MonthGrid(
+                        ym = ym, activitiesByDay = monthOccs.groupBy { it.date }, selected = selected,
+                        onPrev = { ym = ym.minusMonths(1) }, onNext = { ym = ym.plusMonths(1) },
+                        onSelect = { selected = it }
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(selected.format(Dates.fullDate), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 IconButton(onClick = { onAddAt(selected.toEpochDay()) }) { Icon(Icons.Filled.Add, "Tambah") }
             }
             LazyColumn {
-                if (selectedOccs.isEmpty()) item { Text("Tidak ada kegiatan di tanggal ini.") }
+                if (selectedOccs.isEmpty()) item {
+                    // State kosong berilustrasi (mockup Kalender): awan + matahari + bukit.
+                    SoftCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            DawnScenery(Modifier.fillMaxWidth(0.55f).height(46.dp))
+                            Text("Tanggal ini masih kosong", fontWeight = FontWeight.Bold, color = id.rama.todoplanner.ui.theme.Ink)
+                            Text(
+                                "Hari yang tenang — ketuk + untuk mengisi kegiatan di tanggal ini.",
+                                fontSize = 12.5.sp, color = Color(0xFF70858E),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
                 items(selectedOccs.size) { i ->
                     val occ = selectedOccs[i]
                     ActivityRow(occ, onToggleDone = { vm.toggleDone(occ.activity, occ.date.toEpochDay(), it) }, onClick = { onOpenDetail(occ) })
@@ -93,13 +117,17 @@ fun CalendarScreen(vm: AppViewModel, onOpenDetail: (Occurrence) -> Unit, onAddAt
                 items(12) { i ->
                     val m = YearMonth.of(year, i + 1)
                     val count = yearOccs.count { it.date.monthValue == i + 1 }
-                    Card(
+                    SoftCard(
                         modifier = Modifier.padding(4.dp).clickable { ym = m; mode = "Bulan" }
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text(m.format(Dates.monthTitle).substringBefore(" "), fontWeight = FontWeight.Bold)
+                            Text(m.format(Dates.monthTitle).substringBefore(" "), fontWeight = FontWeight.Bold, color = id.rama.todoplanner.ui.theme.Ink)
                             Text(if (count == 0) "—" else "$count kegiatan", fontSize = 12.sp, color = Color(0xFF5A6973))
-                            Box(Modifier.fillMaxWidth().height(4.dp).background(if (count > 0) Color(0xFF8FD0A8) else Color(0xFFE1EBEF)))
+                            Spacer(Modifier.height(5.dp))
+                            Box(
+                                Modifier.fillMaxWidth().height(5.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                    .background(if (count > 0) Color(0xFF8FD0A8) else Color(0xFFE1EBEF))
+                            )
                         }
                     }
                 }

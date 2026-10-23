@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -45,7 +47,10 @@ import id.rama.todoplanner.domain.occurrencesBetween
 import id.rama.todoplanner.pdf.PdfExporter
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.components.Categories
+import id.rama.todoplanner.ui.components.CategoryPill
+import id.rama.todoplanner.ui.components.DawnScenery
 import id.rama.todoplanner.ui.components.GradientButton
+import id.rama.todoplanner.ui.components.SoftCard
 import id.rama.todoplanner.ui.components.PastelChip
 import id.rama.todoplanner.ui.components.CategoryColors
 import id.rama.todoplanner.ui.theme.Mint
@@ -79,6 +84,17 @@ fun periodTitle(period: String, anchor: LocalDate): String = when (period) {
     else -> "Laporan Harian — " + anchor.format(Dates.fullDate)
 }
 
+/** Label rentang untuk subjudul PDF/preview, mis. "1–31 Oktober 2026". */
+fun periodRangeLabel(period: String, anchor: LocalDate): String {
+    val (from, to) = periodRange(period, anchor)
+    return when (period) {
+        "Mingguan" -> "${from.format(DateTimeFormatter.ofPattern("d MMM", idLocale))} – ${to.format(DateTimeFormatter.ofPattern("d MMM yyyy", idLocale))}"
+        "Bulanan" -> "1–${to.dayOfMonth} " + to.format(Dates.monthTitle)
+        "Tahunan" -> "1 Jan – 31 Des ${anchor.year}"
+        else -> from.format(Dates.fullDate)
+    }
+}
+
 fun shiftAnchor(period: String, anchor: LocalDate, dir: Long): LocalDate = when (period) {
     "Mingguan" -> anchor.plusWeeks(dir)
     "Bulanan" -> anchor.plusMonths(dir)
@@ -95,20 +111,40 @@ fun ExportScreen(onPreview: (String, Long, Set<String>) -> Unit) {
     var anchor by remember { mutableStateOf(LocalDate.now()) }
     var categories by remember { mutableStateOf(Categories.toSet()) }
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
+            .verticalScroll(rememberScrollState()).padding(16.dp)
+    ) {
         Text("📄 Export PDF", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(10.dp))
-        Text("Periode", fontWeight = FontWeight.Bold)
-        // FlowRow + PastelChip (ronde 1): chip lebar mengikuti konten, membungkus rapi —
-        // pola yang sama dengan form, tidak ada lagi chip terhimpit.
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.padding(vertical = 4.dp)
-        ) {
-            EXPORT_PERIODS.forEach { p ->
-                PastelChip(selected = period == p, text = p, accent = SkyBlue) { period = p }
+        Text("1️⃣ Pilih Periode Laporan", fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        // Ubin periode 2x2 ala mockup Export (pita gradasi + ikon + label + rentang),
+        // terpilih = bingkai oranye. Menggantikan chip polos ronde 1-2.
+        val periodIcons = listOf("📅" to listOf(Color(0xFFFFD98A), Color(0xFFF6A56B)), "🗓️" to listOf(Color(0xFF8FD0F0), Color(0xFF6FB3DC)), "📆" to listOf(Color(0xFFB7A8E8), Color(0xFF9B8BD4)), "🎯" to listOf(Color(0xFF8FD0A8), Color(0xFF58A97C)))
+        for (rowIdx in 0..1) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                for (colIdx in 0..1) {
+                    val idx = rowIdx * 2 + colIdx
+                    val p = EXPORT_PERIODS[idx]
+                    val (icon, band) = periodIcons[idx]
+                    SoftCard(
+                        modifier = Modifier.weight(1f)
+                            .then(
+                                if (period == p) Modifier.border(2.dp, Color(0xFFF2A65A), androidx.compose.foundation.shape.RoundedCornerShape(18.dp))
+                                else Modifier
+                            )
+                            .clickable { period = p }
+                    ) {
+                        Box(Modifier.fillMaxWidth().height(6.dp).background(Brush.horizontalGradient(band)))
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text("$icon $p", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(periodRangeLabel(p, anchor), fontSize = 11.5.sp, color = Color(0xFF70858E))
+                        }
+                    }
+                }
             }
+            Spacer(Modifier.height(10.dp))
         }
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -144,7 +180,7 @@ fun ExportScreen(onPreview: (String, Long, Set<String>) -> Unit) {
 /* ================= PREVIEW A4 + simpan/bagikan ================= */
 
 @Composable
-fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, categories: Set<String>) {
+fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, categories: Set<String>, onBack: () -> Unit = {}) {
     val activities by vm.activities.collectAsState()
     val profile by vm.profile.collectAsState()
     val context = LocalContext.current
@@ -152,65 +188,130 @@ fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, cat
     val anchor = LocalDate.ofEpochDay(anchorEpochDay)
     val (from, to) = periodRange(period, anchor)
     val title = periodTitle(period, anchor)
+    val rangeLabel = periodRangeLabel(period, anchor)
+    val catLabel = if (categories.size == Categories.size) "Semua kategori" else categories.joinToString(", ")
+    val periodLabel = "$rangeLabel • $catLabel"
     val occs = remember(activities, from, to, categories) {
         activities.occurrencesBetween(from, to).filter { it.activity.category in categories }
     }
     val done = occs.count { it.done }
     val pct = if (occs.isEmpty()) 0 else done * 100 / occs.size
+    val today = LocalDate.now()
+    val printed = java.time.LocalDateTime.now().format(DateTimeFormatter.ofPattern("d MMMM yyyy, HH.mm", idLocale))
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("📄 Preview PDF", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
+            .verticalScroll(rememberScrollState()).padding(16.dp)
+    ) {
+        Text("👁 Preview PDF", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(10.dp))
-        // Lembar A4 (pratinjau visual; PDF aslinya digambar PdfExporter dengan tata letak yang sama).
+        // Lembar A4 — RONDE 3: pratinjau MENIRU PdfExporter & mockup persis:
+        // band gradasi fajar + art, judul, subjudul, kartu Ringkasan Progress,
+        // tabel dengan pill kategori, footer tanggal cetak + nomor halaman.
         Card(modifier = Modifier.fillMaxWidth()) {
             Column {
                 Box(
                     modifier = Modifier.fillMaxWidth()
-                        .background(Brush.linearGradient(listOf(SkyBlue, Peach, Mint))).padding(14.dp)
+                        .background(
+                            Brush.linearGradient(
+                                listOf(Color(0xFFCDEBFF), Color(0xFFEAF7FF), Color(0xFFFFE7CF))
+                            )
+                        )
                 ) {
                     Column {
-                        Text("Todo Planner", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Text("Laporan kegiatan — ${profile.name}", color = Color.White)
+                        DawnScenery(Modifier.fillMaxWidth().height(44.dp))
+                        Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 10.dp)) {
+                            Text(title, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF1E3A47))
+                            Text(
+                                "Todo Planner • ${profile.name} • Periode: $periodLabel",
+                                fontSize = 11.sp, color = Color(0xFF58707C)
+                            )
+                        }
                     }
                 }
                 Column(modifier = Modifier.padding(14.dp)) {
-                    Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Text("${occs.size} kegiatan • $done selesai • progres $pct%")
-                    Spacer(Modifier.height(8.dp))
-                    occs.take(30).forEach { occ ->
-                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(8.dp).clip(CircleShape).background(CategoryColors[occ.activity.category] ?: Color.Gray))
-                            Spacer(Modifier.width(8.dp))
-                            Text(occ.activity.title, modifier = Modifier.weight(1f))
-                            Text(occ.date.format(DateTimeFormatter.ofPattern("d MMM", idLocale)))
-                            Text(if (occ.done) " ✓" else " •")
+                    // Kartu Ringkasan Progress
+                    Box(
+                        modifier = Modifier.fillMaxWidth()
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF4F9FB))
+                            .border(1.dp, Color(0xFFEAF1F4), androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .padding(12.dp)
+                    ) {
+                        Column {
+                            Text("📌 Ringkasan Progress", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("Total kegiatan: ${occs.size} • Selesai: $done ($pct%)", fontSize = 12.5.sp)
+                            if (occs.isNotEmpty()) {
+                                val topCat = occs.groupBy { it.activity.category }.maxByOrNull { it.value.size }
+                                if (topCat != null) {
+                                    val cp = topCat.value.count { it.done } * 100 / topCat.value.size
+                                    Text("Kategori teraktif: ${topCat.key} ($cp%)", fontSize = 12.5.sp)
+                                }
+                            }
                         }
                     }
-                    if (occs.size > 30) Text("… dan ${occs.size - 30} kegiatan lain (semua masuk di PDF)")
-                    if (occs.isEmpty()) Text("Tidak ada kegiatan pada periode & kategori ini.")
-                    Spacer(Modifier.height(8.dp))
-                    Text("Dicetak: ${LocalDate.now().format(Dates.fullDate)} • Halaman 1 dari ${maxOf(1, (occs.size + 21) / 22)}", fontSize = 11.sp, color = Color(0xFF78828C))
+                    Spacer(Modifier.height(10.dp))
+                    // Kepala tabel
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text("Kegiatan", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(1.7f))
+                        Text("Tanggal", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(0.55f))
+                        Text("Kategori", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(0.75f))
+                        Text("Status", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(0.7f))
+                    }
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE1EBEF)))
+                    occs.take(30).forEach { occ ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(occ.activity.title, fontSize = 12.sp, modifier = Modifier.weight(1.7f))
+                            Text(occ.date.format(DateTimeFormatter.ofPattern("d MMM", idLocale)), fontSize = 12.sp, modifier = Modifier.weight(0.55f))
+                            Box(modifier = Modifier.weight(0.75f)) { CategoryPill(occ.activity.category) }
+                            Text(
+                                when {
+                                    occ.done -> "✓ Selesai"
+                                    occ.date.isBefore(today) -> "Belum selesai"
+                                    else -> "Mendatang"
+                                },
+                                fontSize = 12.sp,
+                                color = if (occ.done) Color(0xFF22714F) else Color(0xFF58707C),
+                                modifier = Modifier.weight(0.7f)
+                            )
+                        }
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF0F4F6)))
+                    }
+                    if (occs.size > 30) Text("… dan ${occs.size - 30} kegiatan lain (semua masuk di PDF)", fontSize = 11.5.sp, color = Color(0xFF70858E))
+                    if (occs.isEmpty()) Text("Tidak ada kegiatan pada periode & kategori ini.", fontSize = 12.5.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Dicetak $printed WIB • Todo Planner (full lokal & offline)",
+                            fontSize = 10.sp, color = Color(0xFF78828C), modifier = Modifier.weight(1f)
+                        )
+                        Text("Halaman 1 dari 1+", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF58707C))
+                    }
                 }
             }
         }
         Spacer(Modifier.height(14.dp))
-        Button(
+        GradientButton(
+            text = "⬇️ Simpan PDF",
             onClick = {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
-                        PdfExporter.saveToDownloads(context, profile.name, title, occs)
+                        PdfExporter.saveToDownloads(context, profile.name, title, periodLabel, occs)
                     }
                     Toast.makeText(context, "PDF tersimpan: ${result.location}", Toast.LENGTH_LONG).show()
                 }
             },
             modifier = Modifier.fillMaxWidth()
-        ) { Text("⬇️ Simpan PDF") }
+        )
         Spacer(Modifier.height(8.dp))
         OutlinedButton(
             onClick = {
                 scope.launch {
                     val shareUri = withContext(Dispatchers.IO) {
-                        PdfExporter.writeCacheCopy(context, profile.name, title, occs, "TodoPlanner.pdf")
+                        PdfExporter.writeCacheCopy(context, profile.name, title, periodLabel, occs, "TodoPlanner.pdf")
                     }
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = "application/pdf"
@@ -222,5 +323,7 @@ fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, cat
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text("📤 Bagikan PDF…") }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("‹ Ubah Periode / Kategori") }
     }
 }

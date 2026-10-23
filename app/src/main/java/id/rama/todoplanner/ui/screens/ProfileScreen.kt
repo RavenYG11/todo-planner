@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -47,6 +46,7 @@ import id.rama.todoplanner.ui.components.AvatarView
 import id.rama.todoplanner.ui.components.DawnHeader
 import id.rama.todoplanner.ui.components.GradientButton
 import id.rama.todoplanner.ui.components.PhotoCropper
+import id.rama.todoplanner.ui.components.SoftCard
 import java.time.LocalTime
 
 /**
@@ -82,7 +82,7 @@ fun ProfileScreen(vm: AppViewModel, onSaved: () -> Unit) {
         DawnHeader("👤 Profil & Personalisasi")
         Spacer(Modifier.height(12.dp))
 
-        Card(modifier = Modifier.fillMaxWidth()) {
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 AvatarView(profile.photoPath, name, emoji, colorIndex, 76.dp)
                 Spacer(Modifier.height(8.dp))
@@ -92,7 +92,7 @@ fun ProfileScreen(vm: AppViewModel, onSaved: () -> Unit) {
         }
         Spacer(Modifier.height(12.dp))
 
-        Card(modifier = Modifier.fillMaxWidth()) {
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Nama", fontWeight = FontWeight.Bold)
                 OutlinedTextField(
