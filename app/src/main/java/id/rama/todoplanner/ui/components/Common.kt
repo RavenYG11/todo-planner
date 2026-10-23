@@ -342,6 +342,116 @@ fun DawnIllustration(modifier: Modifier = Modifier) {
     }
 }
 
+/** Latar pastel lembut per kategori untuk pill (pasangan [CategoryColors]). */
+val CategoryPastelBg: Map<String, Color> = linkedMapOf(
+    "Kerja" to Color(0xFFFDE9E4),
+    "Keluarga" to Color(0xFFDCEEF7),
+    "Ibadah" to Color(0xFFE9E4F7),
+    "Olahraga" to Color(0xFFDFF5E9),
+    "Kesehatan" to Color(0xFFFBE7F1),
+    "Keuangan" to Color(0xFFFCF0D8)
+)
+
+/** Pill kategori pastel berwarna + label (bahasa visual mockup: chip kategori di baris jam & tabel PDF). */
+@Composable
+fun CategoryPill(category: String) {
+    val fg = CategoryColors[category] ?: Color.Gray
+    Box(
+        modifier = Modifier.clip(RoundedCornerShape(20.dp))
+            .background(CategoryPastelBg[category] ?: Color(0xFFEDF3F6))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(category, color = fg, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+/**
+ * Ilustrasi header Beranda per FASE HARI (ronde 3) — vektor Canvas, tanpa aset:
+ *  - PAGI : fajar (sama persis DawnIllustration ronde 2).
+ *  - SIANG: matahari tinggi kecil + awan lebih banyak, bukit hijau terang.
+ *  - SORE : matahari besar rendah oranye-pink dekat cakrawala, awan kemerahan, bukit lebih gelap.
+ *  - MALAM: bulan sabit + bintang-bintang, tanpa matahari, bukit siluet gelap.
+ */
+@Composable
+fun PhaseScenery(phase: id.rama.todoplanner.domain.DayPhase, modifier: Modifier = Modifier) {
+    if (phase == id.rama.todoplanner.domain.DayPhase.PAGI) {
+        DawnIllustration(modifier)
+        return
+    }
+    Canvas(modifier = modifier.fillMaxWidth().size(78.dp)) {
+        val w = size.width
+        val h = size.height
+        fun cloud(cx: Float, cy: Float, sx: Float, sy: Float, color: Color) {
+            drawOval(color = color, topLeft = Offset(w * (cx - sx / 2), h * (cy - sy / 2)), size = Size(w * sx, h * sy))
+        }
+        when (phase) {
+            id.rama.todoplanner.domain.DayPhase.SIANG -> {
+                // Matahari tinggi (kiri-atas), kecil & terang + halo tipis
+                drawCircle(color = Color(0xFFFFD98A).copy(alpha = 0.35f), radius = h * 0.30f, center = Offset(w * 0.16f, h * 0.30f))
+                drawCircle(brush = Brush.verticalGradient(listOf(Color(0xFFFFE9A8), Color(0xFFFFC95E))), radius = h * 0.21f, center = Offset(w * 0.16f, h * 0.30f))
+                cloud(0.45f, 0.28f, 0.20f, 0.26f, Color.White)
+                cloud(0.52f, 0.20f, 0.13f, 0.22f, Color.White)
+                cloud(0.72f, 0.38f, 0.17f, 0.22f, Color.White.copy(alpha = 0.9f))
+                cloud(0.88f, 0.22f, 0.12f, 0.18f, Color.White.copy(alpha = 0.85f))
+            }
+            id.rama.todoplanner.domain.DayPhase.SORE -> {
+                // Matahari rendah besar di cakrawala + awan kemerahan
+                drawCircle(color = Color(0xFFF28B82).copy(alpha = 0.22f), radius = h * 0.62f, center = Offset(w * 0.78f, h * 0.88f))
+                drawCircle(brush = Brush.verticalGradient(listOf(Color(0xFFFFB37E), Color(0xFFF2784B))), radius = h * 0.44f, center = Offset(w * 0.78f, h * 0.88f))
+                cloud(0.18f, 0.24f, 0.19f, 0.22f, Color(0xFFFFD9C4))
+                cloud(0.26f, 0.17f, 0.12f, 0.18f, Color(0xFFFFD9C4))
+                cloud(0.52f, 0.14f, 0.14f, 0.18f, Color(0xFFFFC9B8).copy(alpha = 0.9f))
+            }
+            id.rama.todoplanner.domain.DayPhase.MALAM -> {
+                // Bintang-bintang (titik putih berbagai alpha) + bulan sabit (dua lingkaran tumpang tindih)
+                val stars = listOf(
+                    Triple(0.08f, 0.18f, 2.2f), Triple(0.20f, 0.38f, 1.6f), Triple(0.33f, 0.14f, 2.6f),
+                    Triple(0.46f, 0.30f, 1.5f), Triple(0.58f, 0.12f, 2.0f), Triple(0.68f, 0.34f, 1.4f),
+                    Triple(0.90f, 0.16f, 2.4f), Triple(0.95f, 0.42f, 1.5f), Triple(0.14f, 0.55f, 1.4f),
+                    Triple(0.40f, 0.50f, 1.3f), Triple(0.62f, 0.52f, 1.3f), Triple(0.85f, 0.58f, 1.2f)
+                )
+                stars.forEach { (x, y, r) ->
+                    drawCircle(color = Color.White.copy(alpha = 0.55f + (r - 1.2f) * 0.25f), radius = r, center = Offset(w * x, h * y))
+                }
+                // Bulan sabit: dua oval dalam satu Path EvenOdd (tanpa lingkaran timpa berwarna latar)
+                val moon = Path().apply {
+                    fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+                    addOval(androidx.compose.ui.geometry.Rect(center = Offset(w * 0.80f, h * 0.34f), radius = h * 0.30f))
+                    addOval(androidx.compose.ui.geometry.Rect(center = Offset(w * 0.85f, h * 0.26f), radius = h * 0.26f))
+                }
+                drawPath(moon, color = Color(0xFFFFF3C4))
+            }
+            else -> Unit
+        }
+        // Bukit dua lapis (warna per fase)
+        val back = when (phase) {
+            id.rama.todoplanner.domain.DayPhase.SORE -> Color(0xFF9A7B8F)
+            id.rama.todoplanner.domain.DayPhase.MALAM -> Color(0xFF2E3A5C)
+            else -> Color(0xFFBFE3D2)
+        }
+        val front = when (phase) {
+            id.rama.todoplanner.domain.DayPhase.SORE -> Color(0xFF6E5570)
+            id.rama.todoplanner.domain.DayPhase.MALAM -> Color(0xFF1D2742)
+            else -> Color(0xFF8FD0B4)
+        }
+        val hillBack = Path().apply {
+            moveTo(0f, h * 0.80f)
+            quadraticBezierTo(w * 0.17f, h * 0.60f, w * 0.34f, h * 0.76f)
+            quadraticBezierTo(w * 0.50f, h * 0.90f, w * 0.67f, h * 0.74f)
+            quadraticBezierTo(w * 0.84f, h * 0.62f, w, h * 0.68f)
+            lineTo(w, h); lineTo(0f, h); close()
+        }
+        drawPath(hillBack, color = back)
+        val hillFront = Path().apply {
+            moveTo(0f, h * 0.90f)
+            quadraticBezierTo(w * 0.22f, h * 0.74f, w * 0.47f, h * 0.87f)
+            quadraticBezierTo(w * 0.72f, h * 0.97f, w, h * 0.83f)
+            lineTo(w, h); lineTo(0f, h); close()
+        }
+        drawPath(hillFront, color = front.copy(alpha = if (phase == id.rama.todoplanner.domain.DayPhase.MALAM) 1f else 0.75f))
+    }
+}
+
 /** Ilustrasi pegunungan mini untuk kartu puncak Statistik di mockup (segitiga bukit + matahari + bendera). */
 @Composable
 fun PeakIllustration(modifier: Modifier = Modifier) {

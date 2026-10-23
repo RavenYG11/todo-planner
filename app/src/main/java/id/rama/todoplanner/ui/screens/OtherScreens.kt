@@ -57,6 +57,7 @@ import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.Screen
 import id.rama.todoplanner.ui.components.CategoryColors
 import id.rama.todoplanner.ui.components.GradientBar
+import id.rama.todoplanner.ui.components.GradientButton
 import id.rama.todoplanner.ui.components.PeakIllustration
 import id.rama.todoplanner.ui.components.RingProgress
 import id.rama.todoplanner.ui.components.SoftCard
@@ -85,7 +86,9 @@ fun ReminderTestButtons(globalToneUri: String?) {
     val context = LocalContext.current
     val prefs = remember { AppPrefs(context) }
     Column {
-        Button(
+        // RONDE 3: tombol aksi utama memakai gradasi mockup, bukan biru Material polos.
+        id.rama.todoplanner.ui.components.GradientButton(
+            text = "🔔 Tes Reminder 10 Detik",
             onClick = {
                 ReminderScheduler.scheduleTest(context, prefs)
                 Toast.makeText(
@@ -94,8 +97,9 @@ fun ReminderTestButtons(globalToneUri: String?) {
                     Toast.LENGTH_LONG
                 ).show()
             },
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("🔔 Tes Reminder 10 Detik") }
+            modifier = Modifier.fillMaxWidth(),
+            mint = true
+        )
         Spacer(Modifier.height(8.dp))
         OutlinedButton(
             onClick = { openChannelSettings(context, globalToneUri) },
@@ -164,7 +168,12 @@ fun ReminderScreen(vm: AppViewModel) {
                 Text("Izin Notifikasi", fontWeight = FontWeight.Bold, color = Ink)
                 Text(if (notifGranted) "Aktif ✓" else "Belum diberikan")
                 if (!notifGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    Button(onClick = { permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Izinkan Notifikasi") }
+                    Spacer(Modifier.height(8.dp))
+                    GradientButton(
+                        text = "Izinkan Notifikasi",
+                        onClick = { permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                        modifier = Modifier.fillMaxWidth(), mint = true
+                    )
                 }
             }
         }
@@ -183,7 +192,13 @@ fun ReminderScreen(vm: AppViewModel) {
         }
         Spacer(Modifier.height(14.dp))
         Text("Nada Dering Reminder (global)", fontWeight = FontWeight.Bold, color = Ink)
-        ToneField(currentUri = profile.globalToneUri, label = "Nada Dering Reminder") { uri, name ->
+        Spacer(Modifier.height(6.dp))
+        // RONDE 3: showDefaultOption menampilkan "Bawaan HP (default)" paling
+        // atas — memilihnya menghapus URI kustom global (setGlobalTone(null)).
+        ToneField(
+            currentUri = profile.globalToneUri, label = "Nada Dering Reminder",
+            showDefaultOption = true
+        ) { uri, name ->
             vm.setGlobalTone(uri, name)
         }
         Spacer(Modifier.height(14.dp))

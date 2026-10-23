@@ -93,8 +93,23 @@ fun FormScreen(
     var template by remember(editId) { mutableStateOf(existing?.template ?: presetTemplate ?: "Harian") }
     var repeat by remember(editId) { mutableStateOf(existing?.repeatRule ?: "NONE") }
     var reminder by remember(editId) { mutableStateOf<Int?>(existing?.reminderMinutesBefore) }
-    var customTone by remember(editId) { mutableStateOf(existing?.ringtoneUri != null) }
-    var toneUri by remember(editId) { mutableStateOf(existing?.ringtoneUri) }
+    // Mode nada per kegiatan (RONDE 3) — 3 keadaan yang TIDAK ambigu:
+    //  "global"  = Ikuti global (ringtoneUri disimpan null)
+    //  "default" = Bawaan HP (default) — sentinel AppPrefs.RINGTONE_DEFAULT,
+    //              hasil akhirnya benar-benar default sistem walau global kustom
+    //  "custom"  = Atur Sendiri (URI nada pilihan kegiatan ini)
+    var toneMode by remember(editId) {
+        mutableStateOf(
+            when {
+                existing?.ringtoneUri == id.rama.todoplanner.data.AppPrefs.RINGTONE_DEFAULT -> "default"
+                existing?.ringtoneUri != null -> "custom"
+                else -> "global"
+            }
+        )
+    }
+    var toneUri by remember(editId) {
+        mutableStateOf(existing?.ringtoneUri?.takeIf { it != id.rama.todoplanner.data.AppPrefs.RINGTONE_DEFAULT })
+    }
     var toneName by remember(editId) { mutableStateOf(existing?.ringtoneName ?: "") }
     var priority by remember(editId) { mutableStateOf(existing?.priority ?: "Sedang") }
     var category by remember(editId) { mutableStateOf(existing?.category ?: "Kerja") }
@@ -104,14 +119,20 @@ fun FormScreen(
     var pickingTime by remember { mutableStateOf<String?>(null) } // "start" | "end"
 
     // Deteksi form terisi/diubah untuk konfirmasi tombol Back HP.
-    val dirty = remember(title, date, startMin, endMin, template, repeat, reminder, toneUri, priority, category, note, existing) {
+    // Nilai nada yang AKAN disimpan menurut mode (untuk deteksi dirty & simpan).
+    val savedToneUri: String? = when (toneMode) {
+        "default" -> id.rama.todoplanner.data.AppPrefs.RINGTONE_DEFAULT
+        "custom" -> toneUri
+        else -> null
+    }
+    val dirty = remember(title, date, startMin, endMin, template, repeat, reminder, savedToneUri, priority, category, note, existing) {
         if (existing == null) {
             title.isNotBlank() || note.isNotBlank()
         } else {
             title != existing.title || date.toEpochDay() != existing.dateEpochDay ||
                 startMin != existing.startMinutes || endMin != existing.endMinutes ||
                 template != existing.template || repeat != existing.repeatRule ||
-                reminder != existing.reminderMinutesBefore || toneUri != existing.ringtoneUri ||
+                reminder != existing.reminderMinutesBefore || savedToneUri != existing.ringtoneUri ||
                 priority != existing.priority || category != existing.category || note != existing.note
         }
     }
@@ -161,15 +182,16 @@ fun FormScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(vertical = 4.dp)
             ) {
-                PastelChip(selected = !customTone, text = "Ikut Pengaturan", accent = SkyBlue) { customTone = false }
-                PastelChip(selected = customTone, text = "Atur Sendiri", accent = SkyBlue) { customTone = true }
+                PastelChip(selected = toneMode == "global", text = "Ikuti global", accent = SkyBlue) { toneMode = "global" }
+                PastelChip(selected = toneMode == "default", text = "Bawaan HP (default)", accent = SkyBlue) { toneMode = "default" }
+                PastelChip(selected = toneMode == "custom", text = "Atur Sendiri", accent = SkyBlue) { toneMode = "custom" }
             }
-            if (customTone) {
-                ToneField(currentUri = toneUri ?: profile.globalToneUri, label = "Nada Dering Kegiatan") { uri, name ->
+            when (toneMode) {
+                "custom" -> ToneField(currentUri = toneUri, label = "Nada Dering Kegiatan") { uri, name ->
                     toneUri = uri; toneName = name
                 }
-            } else {
-                Text("🎵 ${profile.globalToneName} (global)")
+                "default" -> Text("🎵 Bawaan HP")
+                else -> Text("🎵 ${profile.globalToneName} (global)")
             }
         }
         Text("Prioritas", fontWeight = FontWeight.Bold)
@@ -191,8 +213,12 @@ fun FormScreen(
                     template = template,
                     repeatRule = repeat,
                     reminderMinutesBefore = reminder,
-                    ringtoneUri = if (customTone) toneUri else null,
-                    ringtoneName = if (customTone) toneName.ifBlank { null } else null,
+                    ringtoneUri = savedToneUri,
+                    ringtoneName = when (toneMode) {
+                        "custom" -> toneName.ifBlank { null }
+                        "default" -> "Bawaan HP"
+                        else -> null
+                    },
                     priority = priority,
                     category = category,
                     note = note
