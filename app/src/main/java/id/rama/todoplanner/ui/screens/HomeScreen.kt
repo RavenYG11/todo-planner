@@ -1,6 +1,10 @@
 package id.rama.todoplanner.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,16 +40,33 @@ import id.rama.todoplanner.domain.reminderDateTime
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.Screen
 import id.rama.todoplanner.ui.components.AvatarView
+import id.rama.todoplanner.ui.components.CategoryColors
+import id.rama.todoplanner.ui.components.DawnIllustration
 import id.rama.todoplanner.ui.components.GradientButton
+import id.rama.todoplanner.ui.components.PastelPill
 import id.rama.todoplanner.ui.components.RingProgress
+import id.rama.todoplanner.ui.components.SoftCard
 import id.rama.todoplanner.ui.theme.Ink
+import id.rama.todoplanner.ui.theme.SkyBlueDark
 import kotlinx.coroutines.delay
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.util.Locale
 
 /**
- * Beranda / Hari Ini. Header = sapaan bersih (avatar + sapaan jam HP + tanggal),
- * TANPA pintu ketuk ke Profil — Profil hanya dari Menu/Pengaturan (keputusan Rama #82).
+ * Beranda / Hari Ini — RONDE 2: design-fidelity pass mengikuti mockup final
+ * PERSIS (mockup-varian-1-revisi.html layar 1):
+ *  - Header gradasi fajar + ILUSTRASI matahari terbit/awan/bukit (Canvas),
+ *    sapaan + emoji fase hari + tagline dinamis per fase, chip jam pill kanan atas.
+ *  - Kartu progres: ring gradasi tebal, % besar + caption "hari ini" di tengah
+ *    ring, judul dinamis mengikuti %, pill Streak + pill aksen fase.
+ *  - "Kegiatan Berikutnya" & "Reminder Terdekat" = kartu TERPISAH berikon judul;
+ *    item kegiatan bergaris aksen kategori + lingkaran centang; reminder bullet
+ *    jam + link "Lihat semua reminder".
+ *  - Grid "Mulai dari Template" 2x2 seperti mockup.
+ * Header tetap TANPA pintu ketuk ke Profil (keputusan Rama #82).
  */
 @Composable
 fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Occurrence) -> Unit) {
@@ -58,76 +78,209 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
     val today = now.toLocalDate()
     val todays = remember(activities, today) { activities.occurrencesBetween(today, today) }
     val doneCount = todays.count { it.done }
-    val progress = if (todays.isEmpty()) 0f else doneCount.toFloat() / todays.size
-    val next = todays.firstOrNull { !it.done && (it.activity.startMinutes ?: 0) >= now.hour * 60 + now.minute }
-        ?: todays.firstOrNull { !it.done }
-    val nearestReminder = remember(activities, now) {
-        activities.flatMap { a -> (0..6).mapNotNull { off -> a.reminderDateTime(today.plusDays(off.toLong()))?.let { a to it } } }
-            .filter { it.second.isAfter(now) }.minByOrNull { it.second }
+    val total = todays.size
+    val progress = if (total == 0) 0f else doneCount.toFloat() / total
+    val pct = (progress * 100).toInt()
+    val upcoming = remember(todays, now) {
+        val nowMin = now.hour * 60 + now.minute
+        todays.filter { !it.done }
+            .sortedWith(compareBy({ if ((it.activity.startMinutes ?: 0) >= nowMin) 0 else 1 }, { it.activity.startMinutes ?: 0 }))
+            .take(2)
+    }
+    val upcomingReminders = remember(activities, now) {
+        activities.flatMap { a ->
+            (0..13).mapNotNull { off ->
+                val d = today.plusDays(off.toLong())
+                a.reminderDateTime(d)?.let { t -> Triple(a, d, t) }
+            }
+        }.filter { it.third.isAfter(now) }.sortedBy { it.third }.take(3)
+    }
+    // Streak: hari beruntun (mundur dari hari ini/kemarin) yang semua kegiatannya selesai & ada kegiatan.
+    val streak = remember(activities, today) {
+        var count = 0
+        var d = today
+        val todayOccs = activities.occurrencesBetween(d, d)
+        if (!(todayOccs.isNotEmpty() && todayOccs.all { it.done })) d = d.minusDays(1)
+        while (true) {
+            val occs = activities.occurrencesBetween(d, d)
+            if (occs.isNotEmpty() && occs.all { it.done }) { count++; d = d.minusDays(1) } else break
+        }
+        count
+    }
+    val zoneLabel = remember {
+        try {
+            java.time.ZoneId.systemDefault()
+                .getDisplayName(TextStyle.SHORT, Locale("id", "ID")) ?: ""
+        } catch (e: Exception) { "" }
+    }
+    val progressTitle = when {
+        total == 0 -> "Belum ada kegiatan hari ini"
+        pct >= 100 -> "Semua selesai hari ini 🎉"
+        pct >= 50 -> "Hari ini hampir selesai"
+        pct > 0 -> "Hari ini sedang berjalan"
+        else -> "Hari ini baru mulai"
     }
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        // Header Langit Pagi sesuai mockup final: gradasi fajar TERANG
-        // (biru langit pucat -> krem peach) dengan teks tinta gelap.
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
+            .verticalScroll(rememberScrollState()).padding(16.dp)
+    ) {
+        // ===== Header fajar + ilustrasi (mockup .hero) =====
         Box(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
                 .background(
                     Brush.linearGradient(
-                        listOf(Color(0xFFCDEBFF), Color(0xFFEAF7FF), Color(0xFFFFE7CF))
+                        listOf(Color(0xFFCDEBFF), Color(0xFFEAF7FF), Color(0xFFFFE7CF), Color(0xFFFFEDDC))
                     )
-                ).padding(16.dp)
+                )
         ) {
             Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(today.format(Dates.fullDate), color = Ink, modifier = Modifier.weight(1f))
-                    Text("🕐 " + now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Ink)
+                Column(modifier = Modifier.padding(start = 14.dp, end = 14.dp, top = 14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            today.format(Dates.fullDate), color = Color(0xFF58707C),
+                            fontSize = 12.5.sp, modifier = Modifier.weight(1f)
+                        )
+                        // Chip jam pill kanan atas (mockup: latar putih 65%)
+                        Box(
+                            modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                                .background(Color.White.copy(alpha = 0.65f))
+                                .padding(horizontal = 9.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                "🕐 " + now.format(DateTimeFormatter.ofPattern("HH.mm")) +
+                                    if (zoneLabel.isNotBlank()) " $zoneLabel" else "",
+                                color = Color(0xFF2B6E91), fontSize = 11.sp, fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AvatarView(profile.photoPath, profile.name, profile.emoji, profile.colorIndex, 46.dp)
+                        Spacer(Modifier.width(11.dp))
+                        Column {
+                            Text(
+                                "${Dates.greeting(now.hour)} ${Dates.phaseEmoji(now.hour)}",
+                                color = Color(0xFF58707C), fontSize = 12.sp
+                            )
+                            Text(
+                                "Halo, ${profile.name}!", color = Color(0xFF1E3A47),
+                                fontSize = 21.sp, fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(9.dp))
+                    Text(Dates.phaseTagline(now.hour), color = Color(0xFF58707C), fontSize = 12.5.sp)
                 }
-                Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    AvatarView(profile.photoPath, profile.name, profile.emoji, profile.colorIndex, 46.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(Dates.greeting(now.hour), color = Ink, fontSize = 13.sp)
-                        Text("Halo, ${profile.name}!", color = Ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                DawnIllustration()
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // ===== Kartu progres (mockup: ring tebal + judul dinamis + pill) =====
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    RingProgress(progress, size = 96.dp, stroke = 10.dp)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("$pct%", fontWeight = FontWeight.Bold, fontSize = 19.sp, color = Color(0xFF1E3A47))
+                        Text("hari ini", fontSize = 9.5.sp, color = Color(0xFF7A8E97), fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Spacer(Modifier.width(14.dp))
+                Column {
+                    Text(progressTitle, fontWeight = FontWeight.Bold, fontSize = 15.5.sp, color = Ink)
+                    Text(
+                        if (total == 0) "Ketuk tombol + untuk menambah kegiatan pertamamu."
+                        else "$doneCount dari $total kegiatan selesai." +
+                            if (total - doneCount > 0) "\nSemangat, tinggal ${total - doneCount} lagi!" else "",
+                        fontSize = 12.5.sp, color = Color(0xFF70858E)
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        PastelPill("🔥 Streak $streak hari", Color(0xFFDFF5E9), Color(0xFF22714F))
+                        PastelPill(Dates.phaseAccentChip(now.hour), Color(0xFFFCF0D8), Color(0xFF8A5E14))
                     }
                 }
             }
         }
+        Spacer(Modifier.height(12.dp))
+
+        // ===== Kegiatan Berikutnya (kartu TERPISAH, mockup) =====
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("⏰ Kegiatan Berikutnya", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                if (upcoming.isEmpty()) {
+                    Text(
+                        "Tidak ada kegiatan tersisa hari ini", fontSize = 12.5.sp,
+                        color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
+                    )
+                } else {
+                    upcoming.forEach { occ -> UpcomingItem(occ) { onOpenDetail(occ) } }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // ===== Reminder Terdekat (kartu TERPISAH, mockup) =====
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("🔔 Reminder Terdekat", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                if (upcomingReminders.isEmpty()) {
+                    Text(
+                        "Belum ada reminder terjadwal", fontSize = 12.5.sp,
+                        color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
+                    )
+                } else {
+                    Spacer(Modifier.height(4.dp))
+                    upcomingReminders.forEach { (activity, date, time) ->
+                        val jam = time.format(DateTimeFormatter.ofPattern("HH.mm"))
+                        val label = when (date) {
+                            today -> "$jam — ${activity.title}"
+                            today.plusDays(1) -> "Besok $jam — ${activity.title}"
+                            else -> "${date.format(Dates.shortDate)} $jam — ${activity.title}"
+                        }
+                        Text(
+                            "• $label", fontSize = 12.5.sp, color = Color(0xFF3D5561),
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Lihat semua reminder →", color = SkyBlueDark, fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp, modifier = Modifier.clickable { onNavigate(Screen.Reminder) }
+                )
+            }
+        }
         Spacer(Modifier.height(14.dp))
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(contentAlignment = Alignment.Center) {
-                    RingProgress(progress)
-                    Text("${(progress * 100).toInt()}%", fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.width(16.dp))
-                Column {
-                    Text("Progres Hari Ini", fontWeight = FontWeight.Bold)
-                    Text("$doneCount dari ${todays.size} kegiatan selesai")
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text("Kegiatan Berikutnya", fontWeight = FontWeight.Bold)
-                Text(next?.let { "${it.activity.title} • ${Dates.formatTime(it.activity.startMinutes)}" } ?: "Tidak ada kegiatan tersisa hari ini")
-                Spacer(Modifier.height(8.dp))
-                Text("Reminder Terdekat", fontWeight = FontWeight.Bold)
-                Text(nearestReminder?.let { "${it.first.title} • ${it.second.format(DateTimeFormatter.ofPattern("d MMM HH:mm"))}" } ?: "Belum ada reminder terjadwal")
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        Text("Kegiatan Hari Ini", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        // ===== Kegiatan Hari Ini =====
+        Text("Kegiatan Hari Ini", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink)
+        Spacer(Modifier.height(4.dp))
         if (todays.isEmpty()) {
-            Text("Belum ada kegiatan. Ketuk tombol + untuk menambah.")
+            Text("Belum ada kegiatan. Ketuk tombol + untuk menambah.", fontSize = 13.sp, color = Color(0xFF70858E))
         } else {
             todays.forEach { occ ->
                 ActivityRow(occ, onToggleDone = { vm.toggleDone(occ.activity, occ.date.toEpochDay(), it) }, onClick = { onOpenDetail(occ) })
             }
+        }
+        Spacer(Modifier.height(14.dp))
+
+        // ===== Mulai dari Template (grid 2x2 mockup) =====
+        Text("Mulai dari Template", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            TemplateTile("🌤️", "Harian", "Time-block per jam + checklist", listOf(Color(0xFFFFD98A), Color(0xFFF6A56B)), Modifier.weight(1f)) { onNavigate(Screen.Daily) }
+            TemplateTile("🗓️", "Mingguan", "Senin–Minggu satu pandangan", listOf(Color(0xFF8FD0F0), Color(0xFF6FB3DC)), Modifier.weight(1f)) { onNavigate(Screen.Weekly) }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            TemplateTile("📅", "Bulanan", "Grid bulan + daftar kegiatan", listOf(Color(0xFFB7A8E8), Color(0xFF9B8BD4)), Modifier.weight(1f)) { onNavigate(Screen.Monthly) }
+            TemplateTile("🎯", "Tahunan", "12 bulan, target & resolusi", listOf(Color(0xFF8FD0A8), Color(0xFF58A97C)), Modifier.weight(1f)) { onNavigate(Screen.Yearly) }
         }
         Spacer(Modifier.height(12.dp))
         GradientButton(
@@ -136,5 +289,60 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
             modifier = Modifier.fillMaxWidth(),
             mint = true
         )
+    }
+}
+
+/** Item "Kegiatan Berikutnya": garis aksen kategori + lingkaran centang kosong + judul/sub-info (mockup .task). */
+@Composable
+private fun UpcomingItem(occ: Occurrence, onClick: () -> Unit) {
+    val accent = CategoryColors[occ.activity.category] ?: Color.Gray
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.width(4.dp).height(36.dp)
+                .clip(RoundedCornerShape(4.dp)).background(accent)
+        )
+        Spacer(Modifier.width(10.dp))
+        Box(
+            modifier = Modifier.width(22.dp).height(22.dp)
+                .clip(CircleShape)
+                .border(2.dp, id.rama.todoplanner.ui.theme.GreenDeep, CircleShape)
+        )
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(occ.activity.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Ink)
+            val end = occ.activity.endMinutes
+            val timeText = if (end != null) {
+                "${Dates.formatTime(occ.activity.startMinutes)}–${Dates.formatTime(end)}"
+            } else {
+                Dates.formatTime(occ.activity.startMinutes)
+            }
+            Text(
+                "$timeText • ${occ.activity.category} • Prioritas ${occ.activity.priority}",
+                fontSize = 12.sp, color = Color(0xFF70858E)
+            )
+        }
+    }
+}
+
+/** Ubin template Beranda: pita gradasi atas + ikon + nama + deskripsi (mockup .tpl). */
+@Composable
+private fun TemplateTile(
+    icon: String, title: String, desc: String, band: List<Color>,
+    modifier: Modifier = Modifier, onClick: () -> Unit
+) {
+    SoftCard(modifier = modifier.clickable { onClick() }) {
+        Box(
+            modifier = Modifier.fillMaxWidth().height(6.dp)
+                .background(Brush.horizontalGradient(band))
+        )
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(icon, fontSize = 22.sp)
+            Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Ink, modifier = Modifier.padding(top = 4.dp))
+            Text(desc, fontSize = 12.sp, color = Color(0xFF70858E))
+        }
     }
 }

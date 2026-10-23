@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -37,6 +36,8 @@ import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.domain.Occurrence
 import id.rama.todoplanner.domain.occurrencesBetween
 import id.rama.todoplanner.ui.AppViewModel
+import id.rama.todoplanner.ui.components.PastelChip
+import id.rama.todoplanner.ui.theme.SkyBlue
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -53,10 +54,9 @@ fun CalendarScreen(vm: AppViewModel, onOpenDetail: (Occurrence) -> Unit, onAddAt
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("🗓️ Kalender", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Row {
-            FilterChip(selected = mode == "Bulan", onClick = { mode = "Bulan" }, label = { Text("Bulan") })
-            Spacer(Modifier.padding(4.dp))
-            FilterChip(selected = mode == "Tahun", onClick = { mode = "Tahun" }, label = { Text("Tahun") })
+        Row(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+            PastelChip(selected = mode == "Bulan", text = "Bulan", accent = SkyBlue) { mode = "Bulan" }
+            PastelChip(selected = mode == "Tahun", text = "Tahun", accent = SkyBlue) { mode = "Tahun" }
         }
         Spacer(Modifier.height(8.dp))
 

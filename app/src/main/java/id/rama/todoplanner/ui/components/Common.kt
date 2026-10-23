@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -22,6 +23,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
@@ -162,6 +164,72 @@ fun AvatarView(photoPath: String, name: String, emoji: String, colorIndex: Int, 
     }
 }
 
+/**
+ * Ilustrasi pemandangan fajar mockup Beranda, digambar ulang dengan Canvas Compose
+ * mengikuti SVG acuan (viewBox 358x92): matahari terbit berpendar di kanan,
+ * dua kelompok awan putih, dua lapis bukit hijau di bawah.
+ */
+@Composable
+fun DawnScenery(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        // Matahari + pendar (SVG: cx 292, cy 58, r 27, halo r 36)
+        val sun = Offset(w * (292f / 358f), h * (58f / 92f))
+        drawCircle(color = Color(0xFFF6A56B).copy(alpha = 0.16f), radius = h * (36f / 92f), center = sun)
+        drawCircle(
+            brush = Brush.verticalGradient(listOf(Color(0xFFFFD98A), Color(0xFFF6A56B))),
+            radius = h * (27f / 92f), center = sun
+        )
+        // Awan (elips putih SVG): kelompok kiri (62,34,30,10)+(86,28,20,9); kanan (196,20,24,8)+(214,16,14,6) α .85
+        fun cloud(cx: Float, cy: Float, rx: Float, ry: Float, alpha: Float) {
+            drawOval(
+                color = Color.White.copy(alpha = alpha),
+                topLeft = Offset(w * (cx - rx) / 358f, h * (cy - ry) / 92f),
+                size = Size(w * (2 * rx) / 358f, h * (2 * ry) / 92f)
+            )
+        }
+        cloud(62f, 34f, 30f, 10f, 1f)
+        cloud(86f, 28f, 20f, 9f, 1f)
+        cloud(196f, 20f, 24f, 8f, 0.85f)
+        cloud(214f, 16f, 14f, 6f, 0.85f)
+        // Bukit belakang #BFE3D2: M0 74 Q60 58 120 70 T240 68 T358 62 V92 H0 Z
+        val hillBack = Path().apply {
+            moveTo(0f, h * (74f / 92f))
+            quadraticBezierTo(w * (60f / 358f), h * (58f / 92f), w * (120f / 358f), h * (70f / 92f))
+            quadraticBezierTo(w * (180f / 358f), h * (80f / 92f), w * (240f / 358f), h * (68f / 92f))
+            quadraticBezierTo(w * (300f / 358f), h * (60f / 92f), w, h * (62f / 92f))
+            lineTo(w, h)
+            lineTo(0f, h)
+            close()
+        }
+        drawPath(hillBack, color = Color(0xFFBFE3D2))
+        // Bukit depan #8FD0B4 α .65: M0 82 Q80 70 170 80 T358 76 V92 H0 Z
+        val hillFront = Path().apply {
+            moveTo(0f, h * (82f / 92f))
+            quadraticBezierTo(w * (80f / 358f), h * (70f / 92f), w * (170f / 358f), h * (80f / 92f))
+            quadraticBezierTo(w * (265f / 358f), h * (88f / 92f), w, h * (76f / 92f))
+            lineTo(w, h)
+            lineTo(0f, h)
+            close()
+        }
+        drawPath(hillFront, color = Color(0xFF8FD0B4).copy(alpha = 0.65f))
+    }
+}
+
+/** Pill aksen kecil mockup (badge streak / fase di kartu progres & statistik). */
+@Composable
+fun AccentPill(text: String, bg: Color, fg: Color = InkColor) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(bg)
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    ) {
+        Text(text, color = fg, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
 /** Ring progres gradasi pastel (dipinjam dari V2, dilembutkan — sesuai mockup revisi). */
 @Composable
 fun RingProgress(progress: Float, size: Dp = 92.dp, stroke: Dp = 10.dp) {
@@ -176,7 +244,126 @@ fun RingProgress(progress: Float, size: Dp = 92.dp, stroke: Dp = 10.dp) {
         drawArc(
             brush = Brush.sweepGradient(listOf(SkyBlue, Peach, Mint, SkyBlue)),
             startAngle = -90f, sweepAngle = 360f * progress.coerceIn(0f, 1f), useCenter = false,
-            topLeft = topLeft, size = arcSize, style = Stroke(width = sw)
+            topLeft = topLeft, size = arcSize,
+            style = Stroke(width = sw, cap = androidx.compose.ui.graphics.StrokeCap.Round)
         )
+    }
+}
+
+/* ================= RONDE 2: bahasa visual mockup ================= */
+
+/**
+ * Kartu putih lembut ala mockup: permukaan PUTIH (bukan abu surfaceVariant
+ * bawaan Material yang membuat kartu Statistik/Beranda tampak abu polos di
+ * uji ronde 1), radius besar 18dp, bayangan sangat lembut.
+ */
+@Composable
+fun SoftCard(
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+) {
+    androidx.compose.material3.Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Color.White),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 2.dp),
+        content = content
+    )
+}
+
+/** Pill/badge kecil pastel ala mockup (mis. "🔥 Streak 6 hari"). */
+@Composable
+fun PastelPill(text: String, bg: Color, fg: Color) {
+    Box(
+        modifier = Modifier.clip(RoundedCornerShape(20.dp)).background(bg)
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        Text(text, color = fg, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+/** Bar progres gradasi dengan rel abu muda, tinggi 9dp seperti mockup (.bar). */
+@Composable
+fun GradientBar(progress: Float, colors: List<Color>, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.fillMaxWidth().height(9.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFFEDF3F6))
+    ) {
+        if (progress > 0f) {
+            Box(
+                modifier = Modifier.fillMaxWidth(progress.coerceIn(0.02f, 1f)).height(9.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Brush.horizontalGradient(colors))
+            )
+        }
+    }
+}
+
+/**
+ * Ilustrasi pemandangan fajar untuk header Beranda — digambar dengan Canvas
+ * meniru SVG mockup persis: matahari terbit ber-halo di kanan, awan putih,
+ * dua lapis bukit hijau mint. Tanpa aset gambar, full vektor Compose.
+ */
+@Composable
+fun DawnIllustration(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.fillMaxWidth().size(78.dp)) {
+        val w = size.width
+        val h = size.height
+        // Halo matahari
+        drawCircle(color = Color(0xFFF6A56B).copy(alpha = 0.16f), radius = h * 0.46f, center = Offset(w * 0.815f, h * 0.66f))
+        // Matahari terbit (gradasi kuning -> oranye lembut)
+        drawCircle(
+            brush = Brush.verticalGradient(listOf(Color(0xFFFFD98A), Color(0xFFF6A56B))),
+            radius = h * 0.35f, center = Offset(w * 0.815f, h * 0.66f)
+        )
+        // Awan putih (gugus elips seperti SVG mockup)
+        drawOval(color = Color.White, topLeft = Offset(w * 0.09f, h * 0.28f), size = Size(w * 0.17f, h * 0.24f))
+        drawOval(color = Color.White, topLeft = Offset(w * 0.155f, h * 0.18f), size = Size(w * 0.115f, h * 0.22f))
+        drawOval(color = Color.White.copy(alpha = 0.85f), topLeft = Offset(w * 0.475f, h * 0.12f), size = Size(w * 0.135f, h * 0.20f))
+        drawOval(color = Color.White.copy(alpha = 0.85f), topLeft = Offset(w * 0.525f, h * 0.05f), size = Size(w * 0.08f, h * 0.16f))
+        // Bukit lapis belakang (#BFE3D2)
+        val hillBack = androidx.compose.ui.graphics.Path().apply {
+            moveTo(0f, h * 0.80f)
+            quadraticBezierTo(w * 0.17f, h * 0.60f, w * 0.34f, h * 0.76f)
+            quadraticBezierTo(w * 0.50f, h * 0.90f, w * 0.67f, h * 0.74f)
+            quadraticBezierTo(w * 0.84f, h * 0.62f, w, h * 0.68f)
+            lineTo(w, h); lineTo(0f, h); close()
+        }
+        drawPath(hillBack, color = Color(0xFFBFE3D2))
+        // Bukit lapis depan (#8FD0B4, 65%)
+        val hillFront = androidx.compose.ui.graphics.Path().apply {
+            moveTo(0f, h * 0.90f)
+            quadraticBezierTo(w * 0.22f, h * 0.74f, w * 0.47f, h * 0.87f)
+            quadraticBezierTo(w * 0.72f, h * 0.97f, w, h * 0.83f)
+            lineTo(w, h); lineTo(0f, h); close()
+        }
+        drawPath(hillFront, color = Color(0xFF8FD0B4).copy(alpha = 0.65f))
+    }
+}
+
+/** Ilustrasi pegunungan mini untuk kartu puncak Statistik di mockup (segitiga bukit + matahari + bendera). */
+@Composable
+fun PeakIllustration(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(86.dp, 64.dp)) {
+        val w = size.width
+        val h = size.height
+        val back = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.02f, h * 0.88f); lineTo(w * 0.30f, h * 0.47f); lineTo(w * 0.51f, h * 0.66f)
+            lineTo(w * 0.77f, h * 0.22f); lineTo(w * 0.98f, h * 0.88f); close()
+        }
+        drawPath(back, color = Color(0xFFDCEEF7))
+        val front = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.02f, h * 0.88f); lineTo(w * 0.30f, h * 0.47f); lineTo(w * 0.44f, h * 0.60f)
+            lineTo(w * 0.67f, h * 0.38f); lineTo(w * 0.84f, h * 0.55f); lineTo(w * 0.98f, h * 0.88f); close()
+        }
+        drawPath(front, color = Color(0xFFBFE3D2).copy(alpha = 0.85f))
+        // Matahari di puncak + bendera target
+        drawCircle(color = Color(0xFFFFD98A), radius = h * 0.10f, center = Offset(w * 0.77f, h * 0.20f))
+        drawLine(color = Color(0xFF8A5E14), start = Offset(w * 0.77f, h * 0.20f), end = Offset(w * 0.77f, h * 0.05f), strokeWidth = 2.5f)
+        val flag = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.77f, h * 0.05f); lineTo(w * 0.91f, h * 0.09f); lineTo(w * 0.77f, h * 0.15f); close()
+        }
+        drawPath(flag, color = Coral)
     }
 }

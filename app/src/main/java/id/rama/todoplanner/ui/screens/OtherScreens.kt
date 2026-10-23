@@ -1,12 +1,18 @@
 package id.rama.todoplanner.ui.screens
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,12 +20,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,23 +40,93 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import id.rama.todoplanner.backup.BackupManager
+import id.rama.todoplanner.data.AppPrefs
 import id.rama.todoplanner.domain.occurrencesBetween
 import id.rama.todoplanner.domain.reminderDateTime
+import id.rama.todoplanner.reminder.ReminderChannels
+import id.rama.todoplanner.reminder.ReminderScheduler
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.Screen
+import id.rama.todoplanner.ui.components.CategoryColors
+import id.rama.todoplanner.ui.components.GradientBar
+import id.rama.todoplanner.ui.components.PeakIllustration
+import id.rama.todoplanner.ui.components.RingProgress
+import id.rama.todoplanner.ui.components.SoftCard
 import id.rama.todoplanner.ui.components.ToneField
+import id.rama.todoplanner.ui.theme.Ink
+import id.rama.todoplanner.ui.theme.Mint
+import id.rama.todoplanner.ui.theme.Peach
+import id.rama.todoplanner.ui.theme.SkyBlue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+
+/* ================= TOMBOL TES REMINDER (ronde 2) ================= */
+
+/**
+ * Dua tombol verifikasi mandiri Rama (dipakai di layar Reminder & Pengaturan):
+ *  - "Tes Reminder 10 Detik": jadwalkan alarm tes +10 detik dengan nada global.
+ *  - "Buka Pengaturan Notifikasi": deep link langsung ke pengaturan channel
+ *    aktif (Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).
+ */
+@Composable
+fun ReminderTestButtons(globalToneUri: String?) {
+    val context = LocalContext.current
+    val prefs = remember { AppPrefs(context) }
+    Column {
+        Button(
+            onClick = {
+                ReminderScheduler.scheduleTest(context, prefs)
+                Toast.makeText(
+                    context,
+                    "Tes dijadwalkan — kunci layar, bunyi+getar ±10 detik lagi",
+                    Toast.LENGTH_LONG
+                ).show()
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("🔔 Tes Reminder 10 Detik") }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = { openChannelSettings(context, globalToneUri) },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("⚙️ Buka Pengaturan Notifikasi") }
+    }
+}
+
+private fun openChannelSettings(context: Context, toneUri: String?) {
+    val channelId = ReminderChannels.ensureChannel(context, toneUri)
+    val intent = Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).apply {
+        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        putExtra(Settings.EXTRA_CHANNEL_ID, channelId)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        // Fallback: pengaturan notifikasi aplikasi.
+        try {
+            context.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        } catch (e2: Exception) {
+            Toast.makeText(context, "Buka Pengaturan HP → Aplikasi → Todo Planner → Notifikasi", Toast.LENGTH_LONG).show()
+        }
+    }
+}
 
 /* ================= REMINDER (global) ================= */
 
@@ -75,12 +153,15 @@ fun ReminderScreen(vm: AppViewModel) {
         }.filter { it.third.isAfter(now) }.sortedBy { it.third }.take(10)
     }
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("🔔 Reminder", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
+            .verticalScroll(rememberScrollState()).padding(16.dp)
+    ) {
+        Text("🔔 Reminder", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(10.dp))
-        Card(modifier = Modifier.fillMaxWidth()) {
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("Izin Notifikasi", fontWeight = FontWeight.Bold)
+                Text("Izin Notifikasi", fontWeight = FontWeight.Bold, color = Ink)
                 Text(if (notifGranted) "Aktif ✓" else "Belum diberikan")
                 if (!notifGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     Button(onClick = { permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Izinkan Notifikasi") }
@@ -88,16 +169,32 @@ fun ReminderScreen(vm: AppViewModel) {
             }
         }
         Spacer(Modifier.height(12.dp))
-        Text("Nada Dering Reminder (global)", fontWeight = FontWeight.Bold)
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("🧪 Tes Bunyi & Getar", fontWeight = FontWeight.Bold, color = Ink)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Bunyi kini diputar langsung dari aplikasi (bukan dari channel).",
+                    fontSize = 12.5.sp, color = Color(0xFF70858E)
+                )
+                Spacer(Modifier.height(10.dp))
+                ReminderTestButtons(globalToneUri = profile.globalToneUri)
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Text("Nada Dering Reminder (global)", fontWeight = FontWeight.Bold, color = Ink)
         ToneField(currentUri = profile.globalToneUri, label = "Nada Dering Reminder") { uri, name ->
             vm.setGlobalTone(uri, name)
         }
         Spacer(Modifier.height(14.dp))
-        Text("Reminder Terdekat", fontWeight = FontWeight.Bold)
+        Text("Reminder Terdekat", fontWeight = FontWeight.Bold, color = Ink)
         if (upcoming.isEmpty()) Text("Belum ada reminder terjadwal.")
         upcoming.forEach { (title, _, time) ->
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-                Text("$title • ${time.format(DateTimeFormatter.ofPattern("d MMM HH:mm"))}", modifier = Modifier.padding(12.dp))
+            SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                Text(
+                    "• ${time.format(DateTimeFormatter.ofPattern("HH.mm"))} — $title  (${time.format(DateTimeFormatter.ofPattern("d MMM"))})",
+                    modifier = Modifier.padding(12.dp), fontSize = 13.sp
+                )
             }
         }
     }
@@ -124,34 +221,109 @@ fun StatsScreen(vm: AppViewModel) {
         }
         count
     }
+    fun pctOf(done: Int, total: Int) = if (total == 0) 0 else done * 100 / total
+    val dayPct = pctOf(dayOccs.count { it.done }, dayOccs.size)
+    val weekPct = pctOf(weekOccs.count { it.done }, weekOccs.size)
+    val monthPct = pctOf(monthOccs.count { it.done }, monthOccs.size)
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("📊 Progress / Statistik", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
+            .verticalScroll(rememberScrollState()).padding(16.dp)
+    ) {
+        Text("📊 Progress / Statistik", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(10.dp))
-        StatCard("Hari Ini", dayOccs.count { it.done }, dayOccs.size)
-        StatCard("7 Hari Terakhir", weekOccs.count { it.done }, weekOccs.size)
-        StatCard("Bulan Ini", monthOccs.count { it.done }, monthOccs.size)
-        Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text("🔥 Streak", fontWeight = FontWeight.Bold)
-                Text("$streak hari beruntun semua kegiatan selesai")
+
+        // Kartu puncak ala mockup Statistik (ilustrasi gunung + matahari + bendera target)
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                PeakIllustration()
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("Puncak capaianmu", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                    Text(
+                        if (monthOccs.isEmpty()) "Belum ada kegiatan bulan ini — mulai pendakianmu hari ini."
+                        else "Bulan ini $monthPct% kegiatan selesai (${monthOccs.count { it.done }}/${monthOccs.size}). Bendera = target 100%.",
+                        fontSize = 12.5.sp, color = Color(0xFF70858E)
+                    )
+                }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text("Per Kategori (bulan ini)", fontWeight = FontWeight.Bold)
-        monthOccs.groupBy { it.activity.category }.forEach { (cat, occs) ->
-            Text("$cat: ${occs.count { it.done }}/${occs.size} selesai")
+        Spacer(Modifier.height(10.dp))
+
+        // Grid 2x2 mini seperti mockup: % besar + bar gradasi per periode
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatMini(
+                title = "Harian", pct = dayPct,
+                sub = "${dayOccs.count { it.done }}/${dayOccs.size} selesai",
+                colors = listOf(SkyBlue, Peach), modifier = Modifier.weight(1f)
+            )
+            StatMini(
+                title = "Mingguan", pct = weekPct,
+                sub = "${weekOccs.count { it.done }}/${weekOccs.size} selesai",
+                colors = listOf(Mint, Color(0xFF58A97C)), modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            StatMini(
+                title = "Bulanan", pct = monthPct,
+                sub = "${monthOccs.count { it.done }}/${monthOccs.size} selesai",
+                colors = listOf(Color(0xFFB7A8E8), Color(0xFF9B8BD4)), modifier = Modifier.weight(1f)
+            )
+            SoftCard(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text("🔥 $streak hari", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    Text("Streak berturut-turut\nsemua kegiatan selesai", fontSize = 12.sp, color = Color(0xFF70858E))
+                    Spacer(Modifier.height(8.dp))
+                    Box(contentAlignment = Alignment.Center) {
+                        RingProgress(
+                            if (monthOccs.isEmpty()) 0f else monthPct / 100f,
+                            size = 44.dp, stroke = 5.dp
+                        )
+                        Text("$monthPct%", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Ink)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // Per kategori: titik warna + % + bar warna kategori (mockup)
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("Capaian per Kategori (bulan ini)", fontWeight = FontWeight.Bold, color = Ink)
+                val byCat = monthOccs.groupBy { it.activity.category }
+                if (byCat.isEmpty()) {
+                    Text("Belum ada kegiatan bulan ini.", fontSize = 12.5.sp, color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp))
+                }
+                byCat.forEach { (cat, occs) ->
+                    val done = occs.count { it.done }
+                    val pct = pctOf(done, occs.size)
+                    val color = CategoryColors[cat] ?: Color.Gray
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(top = 10.dp)
+                    ) {
+                        Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(color))
+                        Spacer(Modifier.width(8.dp))
+                        Text("$cat — $pct%", fontSize = 12.5.sp, color = Color(0xFF3D5561), modifier = Modifier.weight(1f))
+                        Text("$done/${occs.size}", fontSize = 12.sp, color = Color(0xFF70858E))
+                    }
+                    GradientBar(pct / 100f, listOf(color.copy(alpha = 0.65f), color), Modifier.padding(top = 5.dp))
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun StatCard(title: String, done: Int, total: Int) {
-    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+private fun StatMini(title: String, pct: Int, sub: String, colors: List<Color>, modifier: Modifier = Modifier) {
+    SoftCard(modifier = modifier) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Text(title, fontWeight = FontWeight.Bold)
-            Text("$done dari $total kegiatan selesai")
-            if (total > 0) LinearProgressIndicator(progress = { done.toFloat() / total }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+            Text("$pct%", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Ink)
+            Text(title, fontSize = 12.5.sp, color = Color(0xFF3D5561))
+            Text(sub, fontSize = 12.sp, color = Color(0xFF70858E))
+            Spacer(Modifier.height(7.dp))
+            GradientBar(pct / 100f, colors)
         }
     }
 }
@@ -196,19 +368,29 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("⚙️ Pengaturan", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
+            .verticalScroll(rememberScrollState()).padding(16.dp)
+    ) {
+        Text("⚙️ Pengaturan", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(8.dp))
         SettingRow("👤 Profil & Personalisasi — Halo, ${profile.name}") { onNavigate(Screen.Profile) }
         SettingRow("🎨 Tema — ${profile.themeMode}") { showThemeDialog = true }
         SettingRow("🔔 Notifikasi & Reminder") { onNavigate(Screen.Reminder) }
         SettingRow("🎵 Nada Dering — ${profile.globalToneName}") { onNavigate(Screen.Reminder) }
+        SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("🧪 Tes Reminder", fontWeight = FontWeight.Bold, color = Ink)
+                Spacer(Modifier.height(8.dp))
+                ReminderTestButtons(globalToneUri = profile.globalToneUri)
+            }
+        }
         SettingRow("📄 Export PDF") { onNavigate(Screen.Export) }
         SettingRow("💾 Backup — Export Data") { exportLauncher.launch("todo-planner-backup.json") }
         SettingRow("📥 Import / Pulihkan Data") { importLauncher.launch(arrayOf("application/json")) }
-        Card(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+        SoftCard(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("Tentang", fontWeight = FontWeight.Bold)
+                Text("Tentang", fontWeight = FontWeight.Bold, color = Ink)
                 Text("Todo Planner v1.0 — full lokal & offline.")
             }
         }
@@ -236,7 +418,7 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
 
 @Composable
 private fun SettingRow(label: String, onClick: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onClick() }) {
+    SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onClick() }) {
         Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, modifier = Modifier.weight(1f))
             Text("›")
@@ -261,8 +443,11 @@ fun MenuScreen(onNavigate: (Screen) -> Unit) {
         "👤 Profil & Personalisasi" to Screen.Profile,
         "📄 Export PDF" to Screen.Export
     )
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("📋 Semua", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
+            .verticalScroll(rememberScrollState()).padding(16.dp)
+    ) {
+        Text("📋 Semua", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(8.dp))
         items.forEach { (label, target) -> SettingRow(label) { onNavigate(target) } }
         // Detail, Form & Preview PDF dijangkau dari daftar/kegiatan, bukan dari menu ini.

@@ -6,6 +6,8 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -44,6 +45,8 @@ import id.rama.todoplanner.domain.occurrencesBetween
 import id.rama.todoplanner.pdf.PdfExporter
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.components.Categories
+import id.rama.todoplanner.ui.components.GradientButton
+import id.rama.todoplanner.ui.components.PastelChip
 import id.rama.todoplanner.ui.components.CategoryColors
 import id.rama.todoplanner.ui.theme.Mint
 import id.rama.todoplanner.ui.theme.Peach
@@ -85,6 +88,7 @@ fun shiftAnchor(period: String, anchor: LocalDate, dir: Long): LocalDate = when 
 
 /* ================= EXPORT: pilih periode + kategori ================= */
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ExportScreen(onPreview: (String, Long, Set<String>) -> Unit) {
     var period by remember { mutableStateOf("Bulanan") }
@@ -95,9 +99,15 @@ fun ExportScreen(onPreview: (String, Long, Set<String>) -> Unit) {
         Text("📄 Export PDF", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(10.dp))
         Text("Periode", fontWeight = FontWeight.Bold)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // FlowRow + PastelChip (ronde 1): chip lebar mengikuti konten, membungkus rapi —
+        // pola yang sama dengan form, tidak ada lagi chip terhimpit.
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(vertical = 4.dp)
+        ) {
             EXPORT_PERIODS.forEach { p ->
-                FilterChip(selected = period == p, onClick = { period = p }, label = { Text(p) })
+                PastelChip(selected = period == p, text = p, accent = SkyBlue) { period = p }
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -108,23 +118,26 @@ fun ExportScreen(onPreview: (String, Long, Set<String>) -> Unit) {
         }
         Spacer(Modifier.height(10.dp))
         Text("Kategori", fontWeight = FontWeight.Bold)
-        Categories.chunked(3).forEach { rowCats ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                rowCats.forEach { cat ->
-                    FilterChip(
-                        selected = cat in categories,
-                        onClick = { categories = if (cat in categories) categories - cat else categories + cat },
-                        label = { Text(cat) }
-                    )
-                }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(vertical = 4.dp)
+        ) {
+            Categories.forEach { cat ->
+                PastelChip(
+                    selected = cat in categories,
+                    text = cat,
+                    accent = CategoryColors[cat] ?: SkyBlue
+                ) { categories = if (cat in categories) categories - cat else categories + cat }
             }
         }
         Spacer(Modifier.height(16.dp))
-        Button(
+        GradientButton(
+            text = "📄 Buat PDF & Lihat Preview",
             onClick = { onPreview(period, anchor.toEpochDay(), categories) },
-            enabled = categories.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("📄 Buat PDF & Lihat Preview") }
+            modifier = Modifier.fillMaxWidth(),
+            enabled = categories.isNotEmpty()
+        )
     }
 }
 
