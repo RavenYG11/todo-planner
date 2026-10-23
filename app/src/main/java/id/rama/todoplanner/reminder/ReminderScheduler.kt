@@ -50,13 +50,17 @@ object ReminderScheduler {
         val toneName = ToneResolver.effectiveToneLabel(activity.ringtoneUri, activity.ringtoneName, prefs.globalRingtoneName)
         val jam = startTimeText(activity)
 
+        // RONDE 4: tanggal kemunculan = tanggal jam mulai (dipakai fullScreenIntent
+        // untuk membuka Detail tanggal yang tepat).
+        val occEpochDay = startAt.toLocalDate().toEpochDay()
         if (earlyAt != null) {
             setAlarm(
                 context, earlyCode(activity.id), KIND_EARLY,
                 title = "⏰ ${offsetLabel(offset)} lagi: ${activity.title}",
                 text = "Mulai pukul $jam",
                 triggerMillis = earlyAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-                toneUri = toneUri, toneName = toneName
+                toneUri = toneUri, toneName = toneName,
+                activityId = activity.id, occEpochDay = occEpochDay
             )
         }
         setAlarm(
@@ -64,7 +68,8 @@ object ReminderScheduler {
             title = "Mulai sekarang: ${activity.title}",
             text = "Pukul $jam — kegiatan dimulai sekarang",
             triggerMillis = startAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
-            toneUri = toneUri, toneName = toneName
+            toneUri = toneUri, toneName = toneName,
+            activityId = activity.id, occEpochDay = occEpochDay
         )
     }
 
@@ -77,7 +82,8 @@ object ReminderScheduler {
             text = "Bunyi + getar tes. Nada: ${prefs.globalRingtoneName}",
             triggerMillis = trigger,
             toneUri = ToneResolver.effectiveToneUri(null, prefs.globalRingtoneUri),
-            toneName = prefs.globalRingtoneName
+            toneName = prefs.globalRingtoneName,
+            activityId = 0L, occEpochDay = LocalDate.now().toEpochDay()
         )
     }
 
@@ -123,7 +129,9 @@ object ReminderScheduler {
         text: String,
         triggerMillis: Long,
         toneUri: String?,
-        toneName: String?
+        toneName: String?,
+        activityId: Long,
+        occEpochDay: Long
     ) {
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             putExtra(ReminderReceiver.EXTRA_ID, requestCode.toLong())
@@ -132,6 +140,9 @@ object ReminderScheduler {
             putExtra(ReminderReceiver.EXTRA_KIND, kind)
             putExtra(ReminderReceiver.EXTRA_TONE_URI, toneUri)
             putExtra(ReminderReceiver.EXTRA_TONE_NAME, toneName)
+            // RONDE 4: identitas kegiatan untuk fullScreenIntent -> Detail.
+            putExtra(ReminderReceiver.EXTRA_ACTIVITY_ID, activityId)
+            putExtra(ReminderReceiver.EXTRA_OCC_EPOCH_DAY, occEpochDay)
         }
         val pending = PendingIntent.getBroadcast(
             context, requestCode, intent,

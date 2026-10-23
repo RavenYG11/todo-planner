@@ -7,7 +7,8 @@ import android.os.Build
 import id.rama.todoplanner.data.AppPrefs
 
 /**
- * Satu-satunya pengelola notification channel reminder — skema V3 (ronde 2).
+ * Satu-satunya pengelola notification channel reminder — skema V4 (ronde 4;
+ * v3 ronde 2 dipertahankan di bawah sebagai riwayat alasan).
  *
  * PELAJARAN RONDE 1 (terbukti di HP Huawei/EMUI Rama): channel dengan
  * `setSound(...)` + `enableVibration(true)` + IMPORTANCE_HIGH ternyata TIDAK
@@ -26,20 +27,28 @@ import id.rama.todoplanner.data.AppPrefs
  */
 object ReminderChannels {
     const val PREFIX_V3 = "reminder3_"
+    const val PREFIX_V4 = "reminder4_"
 
-    /** ID channel v3 untuk sebuah URI nada (per nada, seperti skema sebelumnya). */
+    /** ID channel v4 untuk sebuah URI nada (per nada, seperti skema sebelumnya). */
     fun channelIdFor(toneUri: String?): String {
         val key = when {
             toneUri == AppPrefs.RINGTONE_SILENT -> "senyap"
             toneUri.isNullOrBlank() || toneUri == AppPrefs.RINGTONE_DEFAULT -> "bawaan"
             else -> toneUri.hashCode().toString()
         }
-        return PREFIX_V3 + key
+        return PREFIX_V4 + key
     }
 
     /**
-     * Pastikan channel v3 untuk [toneUri] ada, dan bersihkan channel skema lama.
+     * Pastikan channel v4 untuk [toneUri] ada, dan bersihkan channel skema lama.
      * Mengembalikan ID channel yang aktif.
+     *
+     * RONDE 4: channel v4 = LAPIS CADANGAN GETAR di level OS. Suara tetap
+     * null (bunyi 100% dari kode agar tidak dobel), TAPI getar channel
+     * DIAKTIFKAN dengan pola kuat yang sama dengan ReminderSoundPlayer —
+     * bila EMUI membungkam getar dari kode, getar channel ini menjadi
+     * jalur kedua. Visibilitas lockscreen PUBLIC agar reminder tampil
+     * penuh di layar kunci.
      */
     fun ensureChannel(context: Context, toneUri: String?): String {
         val channelId = channelIdFor(toneUri)
@@ -50,12 +59,14 @@ object ReminderChannels {
                 val channel = NotificationChannel(
                     channelId, "Reminder Kegiatan", NotificationManager.IMPORTANCE_HIGH
                 ).apply {
-                    description = "Pengingat Todo Planner — bunyi & getar diputar dari aplikasi"
-                    // SENGAJA senyap & tanpa getar di level channel: bunyi + getar
-                    // 100% dari kode (ReminderSoundPlayer). Lihat doc di atas.
+                    description = "Pengingat Todo Planner — bunyi dari aplikasi, getar ganda (kode + channel)"
+                    // Suara tetap null: bunyi diputar dari kode (ReminderSoundPlayer).
                     setSound(null, null)
-                    enableVibration(false)
+                    // RONDE 4: getar channel AKTIF sebagai lapis cadangan.
+                    enableVibration(true)
+                    vibrationPattern = ReminderSoundPlayer.VIBRATION_PATTERN
                     enableLights(true)
+                    lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 }
                 nm.createNotificationChannel(channel)
             }
@@ -63,13 +74,16 @@ object ReminderChannels {
         return channelId
     }
 
-    /** Hapus channel v1 ("reminder_...") dan ronde 1 ("reminder2_..."). Aman dipanggil berulang. */
+    /** Hapus channel v1 ("reminder_..."), ronde 1 ("reminder2_...") & v3 ("reminder3_..."). Aman dipanggil berulang. */
     fun deleteLegacyChannels(nm: NotificationManager) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         try {
             nm.notificationChannels
                 .map { it.id }
-                .filter { it.startsWith("reminder_") || it.startsWith("reminder2_") }
+                .filter {
+                    it.startsWith("reminder_") || it.startsWith("reminder2_") ||
+                        it.startsWith(PREFIX_V3)
+                }
                 .forEach { oldId -> nm.deleteNotificationChannel(oldId) }
         } catch (e: Exception) { /* bukan jalur kritis */ }
     }

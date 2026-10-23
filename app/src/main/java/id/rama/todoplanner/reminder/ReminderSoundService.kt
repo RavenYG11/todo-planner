@@ -34,6 +34,9 @@ class ReminderSoundService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var stopSelfRunnable: Runnable? = null
 
+    /** RONDE 4: kunci layar TERANG selama bunyi (cadangan fullScreenIntent). */
+    private var screenWakeLock: android.os.PowerManager.WakeLock? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -47,9 +50,15 @@ class ReminderSoundService : Service() {
         val channelId = intent?.getStringExtra(EXTRA_CHANNEL_ID)
             ?: ReminderChannels.ensureChannel(this, null)
         val toneUri = intent?.getStringExtra(EXTRA_TONE_URI)
+        val activityId = intent?.getLongExtra(EXTRA_ACTIVITY_ID, 0L) ?: 0L
+        val occEpochDay = intent?.getLongExtra(EXTRA_OCC_EPOCH_DAY, 0L) ?: 0L
+
+        // RONDE 4 (b): bangunkan LAYAR selama bunyi — SCREEN_BRIGHT +
+        // ACQUIRE_CAUSES_WAKEUP, timeout seumur bunyi (+5 dtk penyangga).
+        acquireScreenWakeLock()
 
         try {
-            val notif = buildNotification(notifId, title, text, channelId)
+            val notif = buildNotification(notifId, title, text, channelId, activityId, occEpochDay)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(notifId, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
             } else {
@@ -69,8 +78,30 @@ class ReminderSoundService : Service() {
 
     override fun onDestroy() {
         stopSelfRunnable?.let { handler.removeCallbacks(it) }
+        releaseScreenWakeLock()
         ReminderSoundPlayer.stop()
         super.onDestroy()
+    }
+
+    @android.annotation.SuppressLint("WakelockTimeout")
+    private fun acquireScreenWakeLock() {
+        try {
+            if (screenWakeLock?.isHeld == true) return
+            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            @Suppress("DEPRECATION")
+            screenWakeLock = pm.newWakeLock(
+                android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                    android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "TodoPlanner:ReminderScreen"
+            ).apply { acquire(ReminderSoundPlayer.PLAY_DURATION_MS + 5_000) }
+        } catch (e: Exception) { /* tanpa kunci layar pun bunyi tetap jalan */ }
+    }
+
+    private fun releaseScreenWakeLock() {
+        try {
+            if (screenWakeLock?.isHeld == true) screenWakeLock?.release()
+        } catch (e: Exception) { /* abaikan */ }
+        screenWakeLock = null
     }
 
     private fun scheduleStopSelf() {
@@ -81,6 +112,7 @@ class ReminderSoundService : Service() {
 
     private fun shutdown() {
         ReminderSoundPlayer.stop()
+        releaseScreenWakeLock()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
@@ -89,12 +121,19 @@ class ReminderSoundService : Service() {
         stopSelf()
     }
 
-    private fun buildNotification(notifId: Int, title: String, text: String, channelId: String): Notification {
+    private fun buildNotification(
+        notifId: Int, title: String, text: String, channelId: String,
+        activityId: Long, occEpochDay: Long
+    ): Notification {
         val openIntent = PendingIntent.getActivity(
             this, notifId,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            },
+            MainActivity.reminderIntent(this, activityId, occEpochDay),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        // Intent WAKE terpisah untuk fullScreenIntent (lihat ReminderReceiver).
+        val wakeIntent = PendingIntent.getActivity(
+            this, notifId + MainActivity.WAKE_PI_OFFSET,
+            MainActivity.reminderIntent(this, activityId, occEpochDay, wake = true),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val stopIntent = PendingIntent.getBroadcast(
@@ -109,6 +148,11 @@ class ReminderSoundService : Service() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // RONDE 4: notifikasi foreground pun membawa fullScreenIntent —
+            // siapa pun yang tampil (notif receiver / notif service, ID sama)
+            // sama-sama bisa menyalakan layar & membuka Detail.
+            .setFullScreenIntent(wakeIntent, true)
             .setContentIntent(openIntent)
             .setDeleteIntent(stopIntent)
             .addAction(0, "Matikan Bunyi", stopIntent)
@@ -124,11 +168,14 @@ class ReminderSoundService : Service() {
         const val EXTRA_TEXT = "extra_text"
         const val EXTRA_CHANNEL_ID = "extra_channel_id"
         const val EXTRA_TONE_URI = "extra_tone_uri"
+        const val EXTRA_ACTIVITY_ID = "extra_activity_id"
+        const val EXTRA_OCC_EPOCH_DAY = "extra_occ_epoch_day"
         const val DEFAULT_NOTIF_ID = 990_001
 
         fun startIntent(
             context: Context, notifId: Int, title: String, text: String,
-            channelId: String, toneUri: String?
+            channelId: String, toneUri: String?,
+            activityId: Long = 0L, occEpochDay: Long = 0L
         ): Intent = Intent(context, ReminderSoundService::class.java).apply {
             action = ACTION_START
             putExtra(EXTRA_NOTIF_ID, notifId)
@@ -136,6 +183,8 @@ class ReminderSoundService : Service() {
             putExtra(EXTRA_TEXT, text)
             putExtra(EXTRA_CHANNEL_ID, channelId)
             putExtra(EXTRA_TONE_URI, toneUri)
+            putExtra(EXTRA_ACTIVITY_ID, activityId)
+            putExtra(EXTRA_OCC_EPOCH_DAY, occEpochDay)
         }
 
         fun stopIntent(context: Context): Intent =

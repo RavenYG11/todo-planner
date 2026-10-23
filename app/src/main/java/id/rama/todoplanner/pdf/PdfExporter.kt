@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
+import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.os.Build
 import android.os.Environment
@@ -42,6 +43,15 @@ import java.util.Locale
  *    (wrap) agar tidak terpotong; baris yang tidak muat pindah halaman.
  *  - Footer: kiri "Dicetak {tanggal, jam} • Todo Planner (full lokal & offline)",
  *    kanan "Halaman X dari Y" — paginasi dihitung dari tata letak nyata.
+ *
+ * RONDE 4 — deskripsi kegiatan ikut dicetak:
+ *  - Field `note` tiap kegiatan (bila tidak kosong) digambar DI BAWAH judul
+ *    dengan format yang jelas beda: 9pt, abu-abu, ITALIC, indent — dibungkus
+ *    penuh multi-baris (tanpa potong/elipsis).
+ *  - Simulasi tinggi baris menghitung baris deskripsi, sehingga paginasi
+ *    mengalir alami ke berapa pun halaman (tidak ada pembatas 1 halaman;
+ *    sudah diverifikasi tidak ada truncate jumlah halaman di exporter ini)
+ *    dan footer "Halaman X dari Y" selalu total nyata.
  */
 object PdfExporter {
     private const val PAGE_W = 595 // A4 @72dpi
@@ -125,16 +135,54 @@ object PdfExporter {
     /* ---------- Tata letak baris (dipakai untuk paginasi yang benar) ---------- */
 
     private val titlePaintMeasure = Paint().apply { textSize = 10.5f }
+
+    /** Paint ukur deskripsi — HARUS sama dengan paint gambarnya (9pt italic). */
+    private val notePaintMeasure = Paint().apply {
+        textSize = 9f
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+    }
     private const val COL_TITLE_X = MARGIN
     private const val COL_TITLE_W = 238f
     private const val COL_DATE_X = 292f
     private const val COL_CAT_X = 382f
     private const val COL_STATUS_X = 478f
 
-    /** Tinggi satu baris kegiatan: judul dibungkus maks 2 baris, baris min 20pt. */
+    /** Indent deskripsi dari tepi kiri kolom judul (pt). */
+    private const val NOTE_INDENT = 10f
+    private const val NOTE_LINE_H = 11.5f
+
+    /**
+     * Tinggi satu baris kegiatan: judul dibungkus maks 2 baris + deskripsi
+     * (bila ada) dibungkus PENUH di bawahnya. Baris min 20pt.
+     */
     private fun rowHeight(occ: Occurrence): Float {
         val lines = wrapText(occ.activity.title, titlePaintMeasure, COL_TITLE_W - 16f, maxLines = 2)
-        return maxOf(20f, lines.size * 13f + 7f)
+        var h = maxOf(20f, lines.size * 13f + 7f)
+        val note = occ.activity.note
+        if (note.isNotBlank()) {
+            val noteLines = wrapFull(note, notePaintMeasure, COL_TITLE_W - 16f - NOTE_INDENT)
+            h += 2f + noteLines.size * NOTE_LINE_H
+        }
+        return h
+    }
+
+    /** Bungkus teks TANPA batas baris & tanpa elipsis (untuk deskripsi). */
+    private fun wrapFull(text: String, paint: Paint, maxWidth: Float): List<String> {
+        val words = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (words.isEmpty()) return emptyList()
+        val lines = ArrayList<String>()
+        var current = ""
+        for (word in words) {
+            val candidate = if (current.isEmpty()) word else "$current $word"
+            if (paint.measureText(candidate) <= maxWidth || current.isEmpty()) {
+                current = candidate
+            } else {
+                lines.add(current)
+                current = word
+            }
+        }
+        if (current.isNotEmpty()) lines.add(current)
+        return lines
     }
 
     private fun wrapText(text: String, paint: Paint, maxWidth: Float, maxLines: Int): List<String> {
@@ -263,6 +311,11 @@ object PdfExporter {
             }
             val normal = Paint().apply { textSize = 10.5f; color = Color.rgb(34, 51, 61) }
             val small = Paint().apply { textSize = 10f; color = Color.rgb(52, 70, 79) }
+            // Deskripsi (ronde 4): 9pt abu-abu ITALIC — jelas beda dari judul.
+            val notePaint = Paint().apply {
+                textSize = 9f; color = Color.rgb(108, 120, 128)
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+            }
             slice.forEach { occ ->
                 val h = rowHeight(occ)
                 val baseline = y + 11f
@@ -270,6 +323,19 @@ object PdfExporter {
                 val lines = wrapText(occ.activity.title, normal, COL_TITLE_W - 16f, maxLines = 2)
                 lines.forEachIndexed { li, line ->
                     c.drawText(line, COL_TITLE_X + 6f, baseline + li * 13f, normal)
+                }
+                // Deskripsi di bawah judul (ronde 4), dibungkus penuh tanpa potong.
+                val note = occ.activity.note
+                if (note.isNotBlank()) {
+                    val noteLines = wrapFull(note, notePaint, COL_TITLE_W - 16f - NOTE_INDENT)
+                    noteLines.forEachIndexed { ni, line ->
+                        c.drawText(
+                            line,
+                            COL_TITLE_X + 6f + NOTE_INDENT,
+                            baseline + lines.size * 13f + 2f + ni * NOTE_LINE_H,
+                            notePaint
+                        )
+                    }
                 }
                 // Tanggal
                 c.drawText(occ.date.format(DateTimeFormatter.ofPattern("d MMM yyyy", idLocale)), COL_DATE_X, baseline, small)

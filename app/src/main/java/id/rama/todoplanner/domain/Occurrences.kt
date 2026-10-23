@@ -59,3 +59,22 @@ fun ActivityEntity.nextReminder(now: LocalDateTime): Pair<LocalDate, LocalDateTi
     }
     return null
 }
+
+/**
+ * RONDE 4 — daftar "Reminder Terdekat" yang BENAR secara presentasi:
+ * SATU entri per kegiatan = kemunculan berikutnya SAJA.
+ *
+ * Dulu layar Beranda & Reminder mengekspansi 14 hari ke depan per kegiatan,
+ * jadi dua kegiatan HARIAN ber-reminder sama (mis. 08.45) memenuhi daftar
+ * berselang-seling per hari ("gonta-ganti Doa/tes 1") — datanya benar,
+ * presentasinya buruk. Seri lengkap tetap terlihat di Detail kegiatan.
+ *
+ * Urutan: waktu trigger naik; seri (tie) dipecah stabil menurut judul.
+ */
+fun List<ActivityEntity>.nextReminders(
+    now: LocalDateTime,
+    limit: Int
+): List<Triple<ActivityEntity, LocalDate, LocalDateTime>> =
+    mapNotNull { a -> a.nextReminder(now)?.let { (d, t) -> Triple(a, d, t) } }
+        .sortedWith(compareBy({ it.third }, { it.first.title.lowercase() }))
+        .take(limit)
