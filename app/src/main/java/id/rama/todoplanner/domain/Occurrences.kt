@@ -63,35 +63,113 @@ fun ActivityEntity.nextReminder(now: LocalDateTime): Pair<LocalDate, LocalDateTi
     return null
 }
 
-/* ================= RONDE 5: checklist ber-interval ================= */
+/* ================= RONDE 5/6: checklist ber-interval ================= */
 
-/** Jendela bunyi checklist dalam 1 hari: 06.00–22.00 (keputusan manager, spek ronde 5). */
+/**
+ * Jendela hari aktif DEFAULT (06.00–22.00). Sejak RONDE 6 jendela ini bisa
+ * diatur user (AppPrefs.dayStartMinutes/dayEndMinutes) dan diteruskan ke
+ * fungsi-fungsi di bawah sebagai parameter; konstanta ini hanya nilai bawaan
+ * bila pemanggil tidak menyediakan jendela.
+ */
 val CHECKLIST_WINDOW_START: LocalTime = LocalTime.of(6, 0)
 val CHECKLIST_WINDOW_END: LocalTime = LocalTime.of(22, 0)
 
 /**
- * Trigger checklist BERIKUTNYA setelah [now]:
- * pada hari kemunculannya, bunyi berulang tiap interval di dalam jendela
- * 06.00–22.00 (tick pertama tepat 06.00, lalu +interval, ... <= 22.00).
- * Occurrence yang sudah dicentang selesai untuk hari itu DILEWATI total
- * (berhenti permanen hari itu) — pencarian lanjut ke hari kemunculan berikut.
+ * Trigger checklist BERIKUTNYA setelah [now] di dalam jendela hari aktif
+ * ([windowStart]..[windowEnd], default 06.00–22.00):
+ *
+ *  - BELUM selesai hari itu: tick berjangkar awal jendela (tick pertama tepat
+ *    [windowStart], lalu +interval, ... <= [windowEnd]) — perilaku ronde 5.
+ *  - SUDAH ditandai selesai hari itu (RONDE 6, MENGGANTIKAN "berhenti hari
+ *    itu" ronde 5): timer di-RESET — bunyi berikutnya = waktu ditandai
+ *    selesai (timestamp doneTimestamps) + interval, lalu +interval lagi
+ *    selama masih <= [windowEnd]; keluar jendela/hari = lanjut ke hari
+ *    kemunculan berikutnya sesuai pola ulangan (jangkar awal jendela lagi).
+ *    "Batalkan Selesai" menghapus timestamp -> kembali ke jangkar awal jendela.
+ *  - Selesai TANPA timestamp (data lama): tidak ada jangkar reset, hari itu
+ *    dilewati (perilaku ronde 5) demi keamanan.
+ *
  * Mengembalikan (tanggal occurrence, waktu trigger) atau null.
  */
-fun ActivityEntity.checklistNextTrigger(now: LocalDateTime): Pair<LocalDate, LocalDateTime>? {
+fun ActivityEntity.checklistNextTrigger(
+    now: LocalDateTime,
+    windowStart: LocalTime = CHECKLIST_WINDOW_START,
+    windowEnd: LocalTime = CHECKLIST_WINDOW_END
+): Pair<LocalDate, LocalDateTime>? {
     if (!isChecklist) return null
     val intervalMs = intervalMillis() ?: return null
+    val interval = java.time.Duration.ofMillis(intervalMs)
+    var d = LocalDate.ofEpochDay(dateEpochDay)
+    if (d.isBefore(now.toLocalDate())) d = now.toLocalDate()
+    repeat(370) {
+        if (occursOn(d)) {
+            val ws = LocalDateTime.of(d, windowStart)
+            val we = LocalDateTime.of(d, windowEnd)
+            val doneTs = completedAtMillis(d.toEpochDay())
+            when {
+                isDoneOn(d.toEpochDay()) && doneTs != null -> {
+                    // RONDE 6 — jangkar RESET: selesai + interval.
+                    var cand: LocalDateTime? = LocalDateTime.ofInstant(
+                        java.time.Instant.ofEpochMilli(doneTs), java.time.ZoneId.systemDefault()
+                    ).plus(interval)
+                    if (cand!!.isBefore(ws)) cand = ws
+                    if (cand.toLocalDate() == d && !cand.isAfter(we)) {
+                        while (!cand!!.isAfter(now)) {
+                            cand = cand.plus(interval)
+                            if (cand.isAfter(we) || cand.toLocalDate() != d) { cand = null; break }
+                        }
+                        cand?.let { return d to it }
+                    }
+                    // Keluar jendela/hari -> lanjut hari kemunculan berikutnya.
+                }
+                isDoneOn(d.toEpochDay()) -> Unit // selesai tanpa timestamp: lewati hari ini
+                else -> {
+                    if (now.isBefore(ws)) return d to ws
+                    if (now.isBefore(we) || now == we) {
+                        val elapsedMs = java.time.Duration.between(ws, now).toMillis()
+                        val steps = elapsedMs / intervalMs + 1
+                        val candidate = ws.plus(java.time.Duration.ofMillis(steps * intervalMs))
+                        if (!candidate.isAfter(we)) return d to candidate
+                    }
+                }
+            }
+        }
+        d = d.plusDays(1)
+    }
+    return null
+}
+
+/* ================= RONDE 6: pasangan alarm Todo Utama (satu sumber) ================= */
+
+/**
+ * Kemunculan Todo Utama berikutnya yang BELUM selesai dan jam mulainya masih
+ * di masa depan: (tanggal, waktu pengingat awal?, waktu mulai).
+ * Waktu pengingat awal null bila offset 0 / "Tanpa" / sudah lewat — alarm
+ * pas-mulai tetap ada. FUNGSI INI satu-satunya implementasi pencarian ini:
+ * ReminderScheduler (penjadwalan alarm) dan [nextReminderEntry] (tampilan
+ * Mendatang) sama-sama memakainya, supaya yang tampil di daftar PERSIS
+ * yang terjadwal sebagai alarm.
+ *
+ * AUDIT RONDE 6 (bug "Todo Utama tidak muncul di Mendatang" ronde 5):
+ * nextReminderEntry lama hanya memakai waktu pengingat AWAL (mulai - offset)
+ * sebagai titik acuan — setelah waktu awal lewat tetapi jam mulai BELUM tiba,
+ * todo hilang dari daftar padahal alarm pas-mulai masih terjadwal (untuk
+ * offset 1 hari, hilang 1 hari penuh); dan todo ber-reminder "Tanpa" tidak
+ * pernah bisa muncul sama sekali.
+ */
+fun ActivityEntity.nextTodoAlarm(now: LocalDateTime): Triple<LocalDate, LocalDateTime?, LocalDateTime>? {
+    if (isChecklist) return null
+    val startTime = LocalTime.of((startMinutes ?: 9 * 60) / 60, (startMinutes ?: 9 * 60) % 60)
+    val offset = reminderMinutesBefore
     var d = LocalDate.ofEpochDay(dateEpochDay)
     if (d.isBefore(now.toLocalDate())) d = now.toLocalDate()
     repeat(370) {
         if (occursOn(d) && !isDoneOn(d.toEpochDay())) {
-            val windowStart = LocalDateTime.of(d, CHECKLIST_WINDOW_START)
-            val windowEnd = LocalDateTime.of(d, CHECKLIST_WINDOW_END)
-            if (now.isBefore(windowStart)) return d to windowStart
-            if (now.isBefore(windowEnd) || now == windowEnd) {
-                val elapsedMs = java.time.Duration.between(windowStart, now).toMillis()
-                val steps = elapsedMs / intervalMs + 1
-                val candidate = windowStart.plus(java.time.Duration.ofMillis(steps * intervalMs))
-                if (!candidate.isAfter(windowEnd)) return d to candidate
+            val start = LocalDateTime.of(d, startTime)
+            if (start.isAfter(now)) {
+                val early = offset?.takeIf { it > 0 }?.let { start.minusMinutes(it.toLong()) }
+                    ?.takeIf { it.isAfter(now) }
+                return Triple(d, early, start)
             }
         }
         d = d.plusDays(1)
@@ -100,23 +178,21 @@ fun ActivityEntity.checklistNextTrigger(now: LocalDateTime): Pair<LocalDate, Loc
 }
 
 /**
- * Trigger "Reminder Terdekat" BERIKUTNYA untuk kegiatan apa pun (ronde 5):
- *  - Checklist (tanpa jam + interval): trigger interval berikutnya.
- *  - Todo Utama: reminder kemunculan berikutnya — occurrence yang SUDAH
- *    SELESAI dilewati (tidak boleh tampil lagi, kasus uji Rama ronde 4).
+ * Trigger "Reminder Terdekat / Mendatang" BERIKUTNYA untuk kegiatan apa pun:
+ *  - Checklist (tanpa jam + interval): trigger interval berikutnya di
+ *    jendela hari aktif (semantik RESET ronde 6).
+ *  - Todo Utama: alarm berikutnya dari [nextTodoAlarm] — pengingat awal bila
+ *    masih di masa depan, selain itu alarm pas-mulai; todo ber-reminder
+ *    "Tanpa" tampil dengan waktu mulai. Occurrence SELESAI selalu dilewati.
  */
-fun ActivityEntity.nextReminderEntry(now: LocalDateTime): Pair<LocalDate, LocalDateTime>? {
-    if (isChecklist) return checklistNextTrigger(now)
-    var d = LocalDate.ofEpochDay(dateEpochDay)
-    if (d.isBefore(now.toLocalDate())) d = now.toLocalDate()
-    repeat(370) {
-        if (occursOn(d) && !isDoneOn(d.toEpochDay())) {
-            val t = reminderDateTime(d)
-            if (t != null && t.isAfter(now)) return d to t
-        }
-        d = d.plusDays(1)
-    }
-    return null
+fun ActivityEntity.nextReminderEntry(
+    now: LocalDateTime,
+    windowStart: LocalTime = CHECKLIST_WINDOW_START,
+    windowEnd: LocalTime = CHECKLIST_WINDOW_END
+): Pair<LocalDate, LocalDateTime>? {
+    if (isChecklist) return checklistNextTrigger(now, windowStart, windowEnd)
+    val next = nextTodoAlarm(now) ?: return null
+    return next.first to (next.second ?: next.third)
 }
 
 /**
@@ -132,8 +208,10 @@ fun ActivityEntity.nextReminderEntry(now: LocalDateTime): Pair<LocalDate, LocalD
  */
 fun List<ActivityEntity>.nextReminders(
     now: LocalDateTime,
-    limit: Int
+    limit: Int,
+    windowStart: LocalTime = CHECKLIST_WINDOW_START,
+    windowEnd: LocalTime = CHECKLIST_WINDOW_END
 ): List<Triple<ActivityEntity, LocalDate, LocalDateTime>> =
-    mapNotNull { a -> a.nextReminderEntry(now)?.let { (d, t) -> Triple(a, d, t) } }
+    mapNotNull { a -> a.nextReminderEntry(now, windowStart, windowEnd)?.let { (d, t) -> Triple(a, d, t) } }
         .sortedWith(compareBy({ it.third }, { it.first.title.lowercase() }))
         .take(limit)

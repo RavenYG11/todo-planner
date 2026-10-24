@@ -55,7 +55,23 @@ class AppPrefs(context: Context) {
         get() = sp.getString("vibration_diagnostic", "") ?: ""
         set(v) = sp.edit().putString("vibration_diagnostic", v).apply()
 
+    /**
+     * RONDE 6 — JENDELA HARI AKTIF yang bisa diatur user (menit sejak 00:00):
+     * slot Template Harian dirender mengikuti jendela ini DAN jendela alarm
+     * berantai checklist mengikutinya juga (menggantikan konstanta hardcoded
+     * 06.00–22.00 ronde 5). Default tetap 06.00 & 22.00.
+     */
+    var dayStartMinutes: Int
+        get() = sp.getInt("day_start_minutes", DEFAULT_DAY_START_MINUTES)
+        set(v) = sp.edit().putInt("day_start_minutes", v.coerceIn(0, 1439)).apply()
+
+    var dayEndMinutes: Int
+        get() = sp.getInt("day_end_minutes", DEFAULT_DAY_END_MINUTES)
+        set(v) = sp.edit().putInt("day_end_minutes", v.coerceIn(0, 1439)).apply()
+
     companion object {
+        const val DEFAULT_DAY_START_MINUTES = 6 * 60
+        const val DEFAULT_DAY_END_MINUTES = 22 * 60
         const val RINGTONE_SILENT = "silent"
 
         /**

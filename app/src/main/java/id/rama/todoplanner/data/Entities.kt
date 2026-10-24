@@ -25,6 +25,15 @@ import androidx.room.PrimaryKey
  *   "epochDay:epochMillis,epochDay:epochMillis" — pasangan untuk [doneDates].
  *   Bila occurrence selesai tanpa timestamp (data lama), [doneDates] tetap
  *   sumber kebenaran selesai/tidak; timestamp hanya menambah jam selesainya.
+ *
+ * RONDE 6:
+ * - [iconEmoji] : SATU emoji logo kegiatan (grapheme pertama dari input user,
+ *   "" = tanpa logo). Kolom baru migrasi Room 2->3.
+ * - Semantik checklist BERUBAH (menggantikan ronde 5): menandai checklist
+ *   SELESAI bukan lagi membunuh rantai hari itu — timer di-RESET: bunyi
+ *   berikutnya = waktu ditandai selesai + interval, tetap di dalam jendela
+ *   hari aktif (lihat domain checklistNextTrigger). Jangkar reset-nya adalah
+ *   timestamp di [doneTimestamps] ini.
  */
 @Entity(tableName = "activities")
 data class ActivityEntity(
@@ -49,10 +58,16 @@ data class ActivityEntity(
     // RONDE 5 — "epochDay:epochMillis,..." waktu selesai per occurrence.
     // defaultValue diselaraskan PERSIS dengan SQL migrasi 1->2
     // (ADD COLUMN ... TEXT NOT NULL DEFAULT '') agar validasi skema Room lolos.
-    @ColumnInfo(defaultValue = "") val doneTimestamps: String = ""
+    @ColumnInfo(defaultValue = "") val doneTimestamps: String = "",
+    // RONDE 6 — logo emoji kegiatan ("" = tanpa logo). defaultValue PERSIS
+    // sama dengan SQL migrasi 2->3 agar validasi skema Room lolos.
+    @ColumnInfo(defaultValue = "") val iconEmoji: String = ""
 ) {
     /** RONDE 5: checklist = TANPA jam mulai. Todo Utama = ada jam mulai. */
     val isChecklist: Boolean get() = startMinutes == null
+
+    /** RONDE 6: judul siap tampil — logo emoji di depan judul bila ada. */
+    val displayTitle: String get() = if (iconEmoji.isBlank()) title else "$iconEmoji $title"
 
     fun isDoneOn(epochDay: Long): Boolean =
         doneDates.split(",").any { it.trim() == epochDay.toString() }

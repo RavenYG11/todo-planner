@@ -10,16 +10,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 /**
  * Database SQLite lokal (Room). File-nya hanya ada di penyimpanan internal aplikasi.
  *
- * RONDE 5 — MIGRASI NON-DESTRUKTIF 1 -> 2 (WAJIB: data user TIDAK boleh hilang
- * saat update aplikasi):
- *  - activities.intervalValue  INTEGER (baru, nullable)
- *  - activities.intervalUnit   TEXT    (baru, nullable)
- *  - activities.doneTimestamps TEXT NOT NULL DEFAULT '' (baru)
- * Kolom lama tidak diubah/dihapus; backup JSON lama tetap bisa diimpor karena
- * field baru di BackupManager dibaca dengan nilai default bila tidak ada.
- * TIDAK memakai fallbackToDestructiveMigration — migrasi eksplisit di bawah.
+ * MIGRASI NON-DESTRUKTIF (WAJIB: data user TIDAK boleh hilang saat update):
+ *  - 1 -> 2 (ronde 5): activities.intervalValue INTEGER (nullable),
+ *    activities.intervalUnit TEXT (nullable),
+ *    activities.doneTimestamps TEXT NOT NULL DEFAULT ''.
+ *  - 2 -> 3 (ronde 6): activities.iconEmoji TEXT NOT NULL DEFAULT ''
+ *    (logo emoji per kegiatan; "" = tanpa logo).
+ * Kolom lama tidak pernah diubah/dihapus; backup JSON lama tetap bisa
+ * diimpor karena field baru di BackupManager dibaca dengan nilai default
+ * bila tidak ada. TIDAK memakai fallbackToDestructiveMigration.
  */
-@Database(entities = [ActivityEntity::class, TargetEntity::class], version = 2, exportSchema = false)
+@Database(entities = [ActivityEntity::class, TargetEntity::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
     abstract fun targetDao(): TargetDao
@@ -33,12 +34,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** RONDE 6 — kolom logo emoji per kegiatan. */
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE activities ADD COLUMN iconEmoji TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         @Volatile private var instance: AppDatabase? = null
         fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext, AppDatabase::class.java, "todo_planner.db"
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
     }
 }

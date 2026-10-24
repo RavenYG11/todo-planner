@@ -28,6 +28,8 @@ object BackupManager {
                 put("intervalValue", a.intervalValue ?: JSONObject.NULL)
                 put("intervalUnit", a.intervalUnit ?: JSONObject.NULL)
                 put("doneTimestamps", a.doneTimestamps)
+                // RONDE 6: logo emoji kegiatan (backup lama tidak punya field ini)
+                put("iconEmoji", a.iconEmoji)
             })
         }
         root.put("activities", arrA)
@@ -66,7 +68,9 @@ object BackupManager {
                     // RONDE 5: backup LAMA tidak punya field ini -> null/"" (aman).
                     intervalValue = if (o.isNull("intervalValue")) null else o.optInt("intervalValue"),
                     intervalUnit = if (o.isNull("intervalUnit")) null else o.optString("intervalUnit"),
-                    doneTimestamps = o.optString("doneTimestamps", "")
+                    doneTimestamps = o.optString("doneTimestamps", ""),
+                    // RONDE 6: backup LAMA tidak punya field ini -> "" (tanpa logo, aman).
+                    iconEmoji = o.optString("iconEmoji", "")
                 )
             )
         }
