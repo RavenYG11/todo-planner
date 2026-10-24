@@ -1,6 +1,7 @@
 package id.rama.todoplanner.reminder
 
 import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -65,7 +66,14 @@ class ReminderSoundService : Service() {
                 startForeground(notifId, notif)
             }
         } catch (e: Exception) {
-            // Gagal jadi foreground — tetap putar dari pemutar langsung lalu berhenti.
+            // RONDE 8 — gagal jadi foreground BUKAN alasan bunyi tanpa
+            // notifikasi: pasang notifikasi yang SAMA lewat NotificationManager
+            // (judul kegiatan + aksi Berhentikan + ketuk buka Detail) sebelum
+            // memutar, lalu berhenti sendiri seperti biasa.
+            try {
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(notifId, buildNotification(notifId, title, text, channelId, activityId, occEpochDay))
+            } catch (e2: Exception) { /* notifikasi sistem ditolak — bunyi tetap dicoba */ }
             ReminderSoundPlayer.play(this, toneUri)
             scheduleStopSelf()
             return START_NOT_STICKY

@@ -73,8 +73,17 @@ object ReminderScheduler {
     /** Kode varian WAKE/full-screen (getActivity) untuk kode alarm apa pun. */
     private fun wakeCode(alarmCode: Int): Int = alarmCode + MainActivity.WAKE_PI_OFFSET
 
-    fun schedule(context: Context, activity: ActivityEntity, prefs: AppPrefs) {
-        cancelAll(context, activity.id)
+    /**
+     * RONDE 8 — [preserveNotification]: bila true, penjadwalan ulang TIDAK
+     * menghapus notifikasi yang sedang tampil untuk kegiatan ini. Dipakai
+     * HANYA oleh rantai interval Daily Reminder di ReminderReceiver: bunyi
+     * yang baru saja dipasang notifikasinya tidak boleh langsung dihapus
+     * oleh cancelAll() di dalam schedule() (akar bug ronde 8, item 4).
+     * Jalur lain (simpan/hapus/tandai/toggle) memakai default false supaya
+     * notifikasi basi tetap dibersihkan seperti sebelumnya.
+     */
+    fun schedule(context: Context, activity: ActivityEntity, prefs: AppPrefs, preserveNotification: Boolean = false) {
+        cancelAll(context, activity.id, clearNotifications = !preserveNotification)
         // Daily Reminder (tanpa jam) memakai alarm berantai interval, BUKAN
         // pasangan alarm early/start todo utama.
         if (activity.isChecklist) {
@@ -131,7 +140,7 @@ object ReminderScheduler {
         val toneName = ToneResolver.effectiveToneLabel(activity.ringtoneUri, activity.ringtoneName, prefs.globalRingtoneName)
         setAlarm(
             context, checklistCode(activity.id), KIND_CHECKLIST,
-            title = "😉 Daily Reminder: ${activity.displayTitle}",
+            title = "✨ Daily Reminder: ${activity.displayTitle}",
             text = "Pengingat Daily Reminder — tiap ${activity.intervalLabel()}",
             triggerMillis = trigger.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
             toneUri = toneUri, toneName = toneName,
@@ -216,7 +225,7 @@ object ReminderScheduler {
      * varian WAKE/full-screen (+500.000) dari semua kode itu, serta
      * notifikasi yang mungkin telanjur tampil dengan ID tersebut.
      */
-    fun cancelAll(context: Context, activityId: Long) {
+    fun cancelAll(context: Context, activityId: Long, clearNotifications: Boolean = true) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val codes = allAlarmCodes(activityId)
         codes.forEach { code ->
@@ -238,11 +247,17 @@ object ReminderScheduler {
             ) ?: return@forEach
             pending.cancel()
         }
-        // Notifikasi occurrence yang telanjur tampil ikut dibersihkan.
-        try {
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            codes.forEach { code -> nm.cancel(code) }
-        } catch (e: Exception) { /* bukan jalur kritis */ }
+        // Notifikasi occurrence yang telanjur tampil ikut dibersihkan —
+        // KECUALI bila pemanggil meminta preserveNotification (ronde 8):
+        // menghapus notifikasi yang baru saja dipasang untuk bunyi yang
+        // sedang berbunyi membuat bunyi tanpa notifikasi & tanpa tombol
+        // berhenti (bug Daily Reminder ronde 8).
+        if (clearNotifications) {
+            try {
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                codes.forEach { code -> nm.cancel(code) }
+            } catch (e: Exception) { /* bukan jalur kritis */ }
+        }
     }
 
     /** Nama lama dipertahankan untuk pemanggil yang sudah ada. */

@@ -126,7 +126,7 @@ fun DetailScreen(
                     // hari itu (bukan state selesai) + bunyi berikutnya.
                     val times = activity.dailyCompletionTimes(date.toEpochDay())
                     DetailLine(
-                        "Ditandai selesai 😉",
+                        "Ditandai selesai ✨",
                         if (times.isEmpty()) "Belum ditandai hari ini"
                         else times.joinToString(" • ") { Dates.formatCompletedTime(it) }
                     )
@@ -151,8 +151,8 @@ fun DetailScreen(
         Spacer(Modifier.height(14.dp))
         GradientButton(
             // RONDE 7: Daily Reminder tidak punya "Batalkan Selesai" — tombol
-            // selalu mencatat penandaan baru (emoji WINK).
-            text = if (activity.isChecklist) "😉 Tandai Selesai"
+            // selalu mencatat penandaan baru (emoji SPARKLES ✨, ronde 8).
+            text = if (activity.isChecklist) "✨ Tandai Selesai"
                 else if (done) "↩️ Batalkan Selesai" else "✓ Tandai Selesai",
             onClick = { vm.toggleDone(activity, dateEpochDay, if (activity.isChecklist) true else !done) { onGoHome() } },
             modifier = Modifier.fillMaxWidth()

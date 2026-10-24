@@ -38,7 +38,8 @@ import id.rama.todoplanner.ui.theme.GreenDeep
 @Composable
 fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () -> Unit) {
     val accent = CategoryColors[occ.activity.category] ?: Color.Gray
-    // RONDE 7 — Daily Reminder: BUKAN state selesai. Penanda = emoji WINK
+    // RONDE 8 — Daily Reminder: BUKAN state selesai. Penanda = emoji SPARKLES (✨, telanjang,
+    // tanpa lingkaran latar) bila hari ini sudah pernah ditandai; menggantikan WINK ronde 7.
     // bila hari ini sudah pernah ditandai; judul TIDAK dicoret; daftar jam
     // penandaan hari itu ditampilkan. Todo Utama memakai semantik lama.
     val isDaily = occ.activity.isChecklist
@@ -58,17 +59,27 @@ fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () ->
             // Lingkaran penanda ala mockup (.check); RONDE 7: untuk Daily
             // Reminder isinya emoji WINK (bukan centang), ketuk = catat
             // penandaan baru (ViewModel membedakan semantiknya).
-            Box(
-                modifier = Modifier.size(24.dp).clip(CircleShape)
-                    .background(if (shownDone || dailyTimes.isNotEmpty()) GreenDeep else Color.Transparent)
-                    .border(2.dp, GreenDeep, CircleShape)
-                    .clickable { onToggleDone(if (isDaily) true else !occ.done) },
-                contentAlignment = Alignment.Center
-            ) {
-                if (isDaily) {
-                    if (dailyTimes.isNotEmpty()) Text("😉", fontSize = 12.sp)
-                } else if (occ.done) {
-                    Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            if (isDaily) {
+                // RONDE 8: penanda Daily Reminder = emoji SPARKLES TELANJANG —
+                // tanpa lingkaran/border latar sama sekali; area ketuk tetap 24 dp.
+                Box(
+                    modifier = Modifier.size(24.dp)
+                        .clickable { onToggleDone(true) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (dailyTimes.isNotEmpty()) Text("✨", fontSize = 16.sp)
+                }
+            } else {
+                Box(
+                    modifier = Modifier.size(24.dp).clip(CircleShape)
+                        .background(if (shownDone) GreenDeep else Color.Transparent)
+                        .border(2.dp, GreenDeep, CircleShape)
+                        .clickable { onToggleDone(!occ.done) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (occ.done) {
+                        Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
             Spacer(Modifier.width(10.dp))
@@ -93,7 +104,7 @@ fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () ->
                     )
                     if (dailyTimes.isNotEmpty()) {
                         Text(
-                            text = "😉 Ditandai selesai: " + dailyTimes.joinToString(" • ") { Dates.formatCompletedTime(it) },
+                            text = "✨ Ditandai selesai: " + dailyTimes.joinToString(" • ") { Dates.formatCompletedTime(it) },
                             fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep
                         )
                         val nextMs = dailyTimes.last() + (occ.activity.intervalMillis() ?: 0L)

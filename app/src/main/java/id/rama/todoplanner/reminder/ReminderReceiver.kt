@@ -35,6 +35,16 @@ import kotlinx.coroutines.launch
  *    lewati dan jadwalkan occurrence berikutnya;
  *  - selain itu -> bunyi seperti biasa; khusus Daily Reminder, setelah bunyi
  *    jadwalkan tick berikutnya (alarm berantai).
+ * RONDE 8 — AKAR BUG "Daily Reminder bunyi TANPA notifikasi" (terbukti
+ * dari urutan kode, bukan tebakan): ring() memasang notifikasi dengan ID =
+ * checklistCode(id), lalu schedule() rantai interval memanggil cancelAll()
+ * yang menjalankan nm.cancel(checklistCode) — notifikasi yang BARU SAJA
+ * dipasang langsung DIHAPUS, sementara service/pemutar terus berbunyi
+ * 20 detik tanpa notifikasi, tanpa aksi Berhentikan, tanpa identitas
+ * kegiatan. Todo Utama tidak kena karena cabangnya tidak memanggil
+ * schedule() setelah ring(). Perbaikan: rantai memakai
+ * preserveNotification = true (schedule tidak lagi nm.cancel untuk
+ * kegiatan itu); jalur lain tetap membersihkan notifikasi basi.
  * Bila pembacaan DB gagal total (pengecualian), alarm tetap dibunyikan —
  * alarm yang hilang diam-diam lebih buruk daripada bunyi berlebih sesekali.
  */
@@ -72,7 +82,9 @@ class ReminderReceiver : BroadcastReceiver() {
                     // catatan penandaannya tidak ter-reset oleh bunyi ini.
                     act.isChecklist -> {
                         ring(context, notifId, title, text, toneUri, activityId, occEpochDay)
-                        ReminderScheduler.schedule(app, act, app.prefs)
+                        // RONDE 8: rantai Daily Reminder TIDAK boleh menghapus
+                        // notifikasi bunyi ini (lihat ReminderScheduler).
+                        ReminderScheduler.schedule(app, act, app.prefs, preserveNotification = true)
                     }
                     act.isDoneOn(occEpochDay) -> {
                         // SELESAI = JANGAN bunyi. Jadwalkan occurrence
@@ -91,7 +103,8 @@ class ReminderReceiver : BroadcastReceiver() {
                         // Alarm BERANTAI Daily Reminder: setelah satu tick berbunyi,
                         // jadwalkan tick berikutnya dari keadaan DB terbaru.
                         if (kind == ReminderScheduler.KIND_CHECKLIST) {
-                            ReminderScheduler.schedule(app, act, app.prefs)
+                            // RONDE 8: sama — notifikasi bunyi ini dipertahankan.
+                            ReminderScheduler.schedule(app, act, app.prefs, preserveNotification = true)
                         }
                     }
                 }
