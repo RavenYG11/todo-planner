@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
  *  - kegiatan sudah dihapus -> batalkan semua sisa alarmnya, JANGAN bunyi;
  *  - occurrence (EXTRA_OCC_EPOCH_DAY) sudah selesai -> JANGAN bunyi,
  *    lewati dan jadwalkan occurrence berikutnya;
- *  - selain itu -> bunyi seperti biasa; khusus checklist, setelah bunyi
+ *  - selain itu -> bunyi seperti biasa; khusus Daily Reminder, setelah bunyi
  *    jadwalkan tick berikutnya (alarm berantai).
  * Bila pembacaan DB gagal total (pengecualian), alarm tetap dibunyikan —
  * alarm yang hilang diam-diam lebih buruk daripada bunyi berlebih sesekali.
@@ -67,11 +67,18 @@ class ReminderReceiver : BroadcastReceiver() {
                 when {
                     app == null -> ring(context, notifId, title, text, toneUri, activityId, occEpochDay)
                     act == null -> ReminderScheduler.cancelAll(appCtx, activityId)
+                    // RONDE 7 — Daily Reminder TIDAK PERNAH ditahan oleh
+                    // status penandaan: penandaan bukan state selesai, dan
+                    // catatan penandaannya tidak ter-reset oleh bunyi ini.
+                    act.isChecklist -> {
+                        ring(context, notifId, title, text, toneUri, activityId, occEpochDay)
+                        ReminderScheduler.schedule(app, act, app.prefs)
+                    }
                     act.isDoneOn(occEpochDay) -> {
                         // SELESAI = JANGAN bunyi. Jadwalkan occurrence
                         // berikutnya dari keadaan terbaru (schedule juga
                         // membatalkan semua sisa alarm occurrence ini).
-                        // Khusus checklist: schedule menghitung tick RESET
+                        // Khusus Daily Reminder: schedule menghitung tick RESET
                         // (selesai + interval) sesuai semantik ronde 6 —
                         // alarm yang baru saja berbunyi ini adalah tick
                         // SEBELUM ditandai selesai, jadi tick reset yang
@@ -81,7 +88,7 @@ class ReminderReceiver : BroadcastReceiver() {
                     }
                     else -> {
                         ring(context, notifId, title, text, toneUri, activityId, occEpochDay)
-                        // Alarm BERANTAI checklist: setelah satu tick berbunyi,
+                        // Alarm BERANTAI Daily Reminder: setelah satu tick berbunyi,
                         // jadwalkan tick berikutnya dari keadaan DB terbaru.
                         if (kind == ReminderScheduler.KIND_CHECKLIST) {
                             ReminderScheduler.schedule(app, act, app.prefs)

@@ -12,7 +12,7 @@ import java.util.Locale
  * mengikuti struktur yang sama persis.
  *
  * Aturan (spek ronde 5):
- *  - PDF hanya memuat TODO UTAMA — checklist (tanpa jam) TIDAK dimasukkan
+ *  - PDF hanya memuat TODO UTAMA — Daily Reminder (tanpa jam) TIDAK dimasukkan
  *    sama sekali (penyaringan dilakukan pemanggil lewat [onlyTodoUtama]).
  *  - Penomoran urut (1., 2., 3., ...) di dalam tiap kelompok 1 HARI,
  *    mulai ulang per hari, di SEMUA periode.
@@ -37,7 +37,7 @@ data class PdfBlock(
     val number: Int = 0
 )
 
-/** Saring khusus Todo Utama (checklist dikeluarkan dari PDF sama sekali). */
+/** Saring khusus Todo Utama (Daily Reminder dikeluarkan dari PDF sama sekali). */
 fun List<Occurrence>.onlyTodoUtama(): List<Occurrence> =
     filter { it.activity.startMinutes != null }
 

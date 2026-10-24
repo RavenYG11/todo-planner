@@ -36,7 +36,7 @@ import java.util.Locale
  * Deskripsi kegiatan di bawah judul: 9pt abu-abu italic indent, wrap penuh (ronde 4).
  *
  * RONDE 5 — DESAIN PER PERIODE DIBEDAKAN (struktur dari domain/PdfStructure):
- *  - PDF hanya memuat TODO UTAMA — checklist dikeluarkan sama sekali.
+ *  - PDF hanya memuat TODO UTAMA — Daily Reminder dikeluarkan sama sekali.
  *  - Penomoran urut per kelompok 1 hari (mulai ulang tiap hari), semua periode.
  *  - HARIAN : sub-header hari + daftar bernomor; yang selesai berlabel
  *    "Diselesaikan HH:mm" dari timestamp selesai (tanpa timestamp: "Selesai").
@@ -210,7 +210,7 @@ object PdfExporter {
     }
 
     fun buildDocument(userName: String, periodTitle: String, periodLabel: String, occurrencesRaw: List<Occurrence>, period: String = "Harian"): PdfDocument {
-        // RONDE 5: checklist TIDAK masuk PDF sama sekali.
+        // RONDE 5: Daily Reminder TIDAK masuk PDF sama sekali.
         val occurrences = occurrencesRaw.onlyTodoUtama()
         val blocks = buildPdfBlocks(period, occurrences)
         val doc = PdfDocument()

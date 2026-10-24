@@ -27,17 +27,17 @@ import java.time.ZoneId
  * Suara + getar berlaku untuk semua prioritas kegiatan.
  *
  * RONDE 6 — SKEMA REQUEST CODE ditulis ulang & PEMBATALAN dibuat SIMETRIS:
- *  - Skema ronde 5 (early=id*2, start=id*2+1, checklist=700000+id, legacy=id)
+ *  - Skema ronde 5 (early=id*2, start=id*2+1, Daily Reminder=700000+id, legacy=id)
  *    BERTABRAKAN antar-kegiatan (legacy id N == early id N/2 untuk N genap)
  *    dan [cancel] lama TIDAK PERNAH membatalkan varian WAKE/full-screen
  *    (PendingIntent getActivity berkode alarm + 500.000 di ReminderReceiver
  *    & ReminderSoundService). Kombinasi itu salah satu akar bug "todo sudah
  *    selesai masih bunyi": pembatalan tidak mencakup semua yang dijadwalkan.
  *  - Skema baru: basis 2.000.000 + id*10 + jenis (0=awal, 1=mulai,
- *    2=checklist) — tidak bertabrakan dengan kode lama, kode tes (990.002),
+ *    2=Daily Reminder) — tidak bertabrakan dengan kode lama, kode tes (990.002),
  *    maupun kode WAKE-nya sendiri (+500.000).
  *  - [cancelAll] membatalkan SEMUA varian untuk satu kegiatan: alarm awal,
- *    alarm pas-mulai, rantai checklist, varian WAKE (+500.000) dari ketiganya,
+ *    alarm pas-mulai, rantai Daily Reminder, varian WAKE (+500.000) dari ketiganya,
  *    kode skema LAMA (agar alarm yatim versi sebelumnya ikut mati), notifikasi
  *    yang telanjur tampil, dan tes tidak disentuh (bukan milik kegiatan).
  *    Daftar kode dihitung dari fungsi yang SAMA untuk jalur schedule & cancel.
@@ -75,7 +75,7 @@ object ReminderScheduler {
 
     fun schedule(context: Context, activity: ActivityEntity, prefs: AppPrefs) {
         cancelAll(context, activity.id)
-        // Checklist (tanpa jam) memakai alarm berantai interval, BUKAN
+        // Daily Reminder (tanpa jam) memakai alarm berantai interval, BUKAN
         // pasangan alarm early/start todo utama.
         if (activity.isChecklist) {
             scheduleChecklist(context, activity, prefs)
@@ -115,7 +115,7 @@ object ReminderScheduler {
     }
 
     /**
-     * Jadwalkan SATU alarm checklist berikutnya (alarm berantai): hanya satu
+     * Jadwalkan SATU alarm Daily Reminder berikutnya (alarm berantai): hanya satu
      * alarm aktif tiap saat; setelah berbunyi, ReminderReceiver memanggil
      * [schedule] lagi untuk tick berikutnya. Trigger dihitung domain
      * (checklistNextTrigger) mengikuti JENDELA HARI AKTIF user (ronde 6,
@@ -131,8 +131,8 @@ object ReminderScheduler {
         val toneName = ToneResolver.effectiveToneLabel(activity.ringtoneUri, activity.ringtoneName, prefs.globalRingtoneName)
         setAlarm(
             context, checklistCode(activity.id), KIND_CHECKLIST,
-            title = "✓ Checklist: ${activity.displayTitle}",
-            text = "Pengingat checklist — tiap ${activity.intervalLabel()}",
+            title = "😉 Daily Reminder: ${activity.displayTitle}",
+            text = "Pengingat Daily Reminder — tiap ${activity.intervalLabel()}",
             triggerMillis = trigger.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli(),
             toneUri = toneUri, toneName = toneName,
             activityId = activity.id, occEpochDay = occDate.toEpochDay()
@@ -212,7 +212,7 @@ object ReminderScheduler {
     /**
      * RONDE 6 — batalkan SEMUA PendingIntent milik satu kegiatan (dipakai
      * toggleDone lewat [schedule], hapus kegiatan, dan receiver):
-     * alarm awal + pas-mulai + rantai checklist (skema baru DAN lama),
+     * alarm awal + pas-mulai + rantai Daily Reminder (skema baru DAN lama),
      * varian WAKE/full-screen (+500.000) dari semua kode itu, serta
      * notifikasi yang mungkin telanjur tampil dengan ID tersebut.
      */

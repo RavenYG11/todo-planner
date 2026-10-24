@@ -33,7 +33,7 @@ data class ProfileState(
     val globalToneUri: String?,
     val globalToneName: String,
     val themeMode: String,
-    /** RONDE 6: jendela hari aktif user (menit sejak 00:00) — slot Harian + jendela checklist. */
+    /** RONDE 6: jendela hari aktif user (menit sejak 00:00) — slot Harian + jendela Daily Reminder. */
     val dayStartMinutes: Int,
     val dayEndMinutes: Int
 )
@@ -143,7 +143,7 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
 
     /**
      * RONDE 6 — ubah jendela hari aktif: simpan ke AppPrefs, segarkan state
-     * (slot Harian ikut berubah), dan jadwalkan ulang semua alarm checklist
+     * (slot Harian ikut berubah), dan jadwalkan ulang semua alarm Daily Reminder
      * karena jendela bunyinya mengikuti setting yang sama.
      */
     fun setDayWindow(startMinutes: Int, endMinutes: Int) {
@@ -182,19 +182,26 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
      * RONDE 6 (fix bug "sudah selesai masih bunyi", lapis a): SEBELUM status
      * baru disimpan, batalkan dulu SEMUA PendingIntent occurrence ini lewat
      * ReminderScheduler.cancelAll — alarm awal, alarm pas-mulai, varian
-     * WAKE/full-screen (+500.000), rantai checklist, dan kode skema lama.
+     * WAKE/full-screen (+500.000), rantai Daily Reminder, dan kode skema lama.
      * Setelah simpan, schedule() (yang juga memulai dengan cancelAll)
      * memasang alarm occurrence berikutnya saja. Receiver memeriksa ulang
      * status selesai dari DB sebelum bunyi sebagai lapis kedua.
      *
-     * Checklist (semantik baru ronde 6): "selesai" = akui & RESET timer —
+     * Daily Reminder (semantik baru ronde 6): "selesai" = akui & RESET timer —
      * schedule() memasang tick berikutnya pada (waktu selesai + interval);
      * "Batalkan Selesai" = kembali ke tick berjangkar awal jendela.
      */
     fun toggleDone(activity: ActivityEntity, epochDay: Long, done: Boolean) {
         viewModelScope.launch {
             ReminderScheduler.cancelAll(app, activity.id)
-            val updated = activity.withDoneOn(epochDay, done)
+            // RONDE 7 — Daily Reminder: "selesai" = CATAT penandaan baru
+            // (timestamp ditambahkan ke daftar hari itu) + reset rantai
+            // alarm; doneDates TIDAK disentuh (bukan state selesai).
+            val updated = if (activity.isChecklist) {
+                activity.withDailyCompletion(epochDay)
+            } else {
+                activity.withDoneOn(epochDay, done)
+            }
             repo.saveActivity(updated)
             ReminderScheduler.schedule(app, updated, prefs)
         }
@@ -204,7 +211,11 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
     fun toggleDone(activity: ActivityEntity, epochDay: Long, done: Boolean, onComplete: () -> Unit) {
         viewModelScope.launch {
             ReminderScheduler.cancelAll(app, activity.id)
-            val updated = activity.withDoneOn(epochDay, done)
+            val updated = if (activity.isChecklist) {
+                activity.withDailyCompletion(epochDay)
+            } else {
+                activity.withDoneOn(epochDay, done)
+            }
             repo.saveActivity(updated)
             ReminderScheduler.schedule(app, updated, prefs)
             onComplete()
