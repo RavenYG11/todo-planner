@@ -196,11 +196,18 @@ fun ReminderScreen(vm: AppViewModel) {
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifGranted = it }
 
     // RONDE 4/5: SATU entri per kegiatan (kemunculan berikutnya saja),
-    // urut waktu trigger; occurrence selesai tersingkir; checklist ikut
-    // dengan trigger intervalnya — semua dari nextReminders domain.
-    val upcoming = remember(activities) {
-        activities.nextReminders(LocalDateTime.now(), limit = 10)
+    // urut waktu trigger; occurrence selesai tersingkir — dari domain.
+    // RONDE 6: daftar dipecah dua section (Todo Utama vs Checklist di bawah)
+    // dan jendela checklist mengikuti setting hari aktif user.
+    val upcoming = remember(activities, profile.dayStartMinutes, profile.dayEndMinutes) {
+        activities.nextReminders(
+            LocalDateTime.now(), limit = 20,
+            windowStart = java.time.LocalTime.of(profile.dayStartMinutes / 60, profile.dayStartMinutes % 60),
+            windowEnd = java.time.LocalTime.of(profile.dayEndMinutes / 60, profile.dayEndMinutes % 60)
+        )
     }
+    val upcomingTodos = upcoming.filter { !it.first.isChecklist }
+    val upcomingChecklists = upcoming.filter { it.first.isChecklist }
     val today = LocalDate.now()
 
     Column(
@@ -210,17 +217,35 @@ fun ReminderScreen(vm: AppViewModel) {
         Text("🔔 Reminder", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(10.dp))
 
-        // ===== Kartu Mendatang (mockup) =====
+        // ===== RONDE 6: Section Todo Utama (sub-kartu terpisah) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("Mendatang", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
-                if (upcoming.isEmpty()) {
+                Text("Mendatang — 📌 Todo Utama", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                if (upcomingTodos.isEmpty()) {
                     Text(
-                        "Belum ada reminder terjadwal.", fontSize = 12.5.sp,
-                        color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
+                        "Tidak ada todo utama terjadwal. Todo sekali jalan di masa depan akan muncul di sini.",
+                        fontSize = 12.5.sp, color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
                     )
                 } else {
-                    upcoming.forEach { (activity, date, time) ->
+                    upcomingTodos.forEach { (activity, date, time) ->
+                        NextReminderRow(activity, date, time, today)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // ===== RONDE 6: Section Checklist (sub-kartu terpisah) =====
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("Mendatang — ✅ Checklist", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                if (upcomingChecklists.isEmpty()) {
+                    Text(
+                        "Tidak ada checklist terjadwal. Checklist ber-interval akan muncul di sini.",
+                        fontSize = 12.5.sp, color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
+                    )
+                } else {
+                    upcomingChecklists.forEach { (activity, date, time) ->
                         NextReminderRow(activity, date, time, today)
                     }
                 }
@@ -413,6 +438,8 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var showThemeDialog by remember { mutableStateOf(false) }
+    // RONDE 6: picker jendela hari aktif dari Pengaturan (selain layar Harian).
+    var pickingWindow by remember { mutableStateOf<String?>(null) } // "start" | "end"
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
@@ -453,6 +480,9 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
         Spacer(Modifier.height(8.dp))
         SettingRow("👤 Profil & Personalisasi — Halo, ${profile.name}") { onNavigate(Screen.Profile) }
         SettingRow("🎨 Tema — ${profile.themeMode}") { showThemeDialog = true }
+        // RONDE 6: jendela hari aktif (slot Harian + jendela checklist).
+        SettingRow("🕐 Hari aktif mulai — %02d.%02d".format(profile.dayStartMinutes / 60, profile.dayStartMinutes % 60)) { pickingWindow = "start" }
+        SettingRow("🕐 Hari aktif selesai — %02d.%02d".format(profile.dayEndMinutes / 60, profile.dayEndMinutes % 60)) { pickingWindow = "end" }
         SettingRow("🔔 Notifikasi & Reminder") { onNavigate(Screen.Reminder) }
         SettingRow("🎵 Nada Dering — ${profile.globalToneName}") { onNavigate(Screen.Reminder) }
         SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
@@ -470,7 +500,7 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
         SoftCard(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text("Tentang", fontWeight = FontWeight.Bold, color = Ink)
-                Text("Todo Planner v1.0.3 — full lokal & offline.")
+                Text("Todo Planner v1.0.4 — full lokal & offline.")
             }
         }
     }
@@ -491,6 +521,20 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
                 }
             },
             confirmButton = { TextButton(onClick = { showThemeDialog = false }) { Text("Tutup") } }
+        )
+    }
+
+    // RONDE 6: dialog picker jendela hari aktif.
+    pickingWindow?.let { which ->
+        id.rama.todoplanner.ui.components.SlideTimePickerDialog(
+            title = if (which == "start") "Jam Mulai Hari Aktif" else "Jam Selesai Hari Aktif",
+            initialMinutes = if (which == "start") profile.dayStartMinutes else profile.dayEndMinutes,
+            onDismiss = { pickingWindow = null },
+            onConfirm = { value ->
+                if (which == "start") vm.setDayWindow(value, profile.dayEndMinutes)
+                else vm.setDayWindow(profile.dayStartMinutes, value)
+                pickingWindow = null
+            }
         )
     }
 }

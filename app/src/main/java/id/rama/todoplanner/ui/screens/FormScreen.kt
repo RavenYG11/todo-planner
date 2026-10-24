@@ -32,10 +32,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.rama.todoplanner.data.ActivityEntity
+import id.rama.todoplanner.data.AppPrefs
 import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.components.Categories
@@ -50,7 +52,22 @@ import id.rama.todoplanner.ui.theme.Lavender
 import id.rama.todoplanner.ui.theme.SkyBlue
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.ZoneOffset
+
+/**
+ * RONDE 6 — ambil grapheme (klaster karakter) PERTAMA dari input user:
+ * satu emoji utuh (termasuk yang ber-codepoint ganda) untuk logo kegiatan.
+ */
+private fun firstGrapheme(text: String): String {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return ""
+    val it = java.text.BreakIterator.getCharacterInstance()
+    it.setText(trimmed)
+    val end = it.next()
+    return if (end == java.text.BreakIterator.DONE) "" else trimmed.substring(0, end)
+}
 
 private val REPEAT_OPTIONS = listOf("NONE" to "Tidak", "DAILY" to "Harian", "WEEKLY" to "Mingguan", "MONTHLY" to "Bulanan", "YEARLY" to "Tahunan")
 // Opsi "Tepat waktu" DIHAPUS (permintaan Rama, ronde 1): alarm pas jam mulai kini
@@ -128,7 +145,18 @@ fun FormScreen(
     var priority by remember(editId) { mutableStateOf(existing?.priority ?: "Sedang") }
     var category by remember(editId) { mutableStateOf(existing?.category ?: "Kerja") }
     var note by remember(editId) { mutableStateOf(existing?.note ?: "") }
+    // RONDE 6 — logo emoji kegiatan ("" = tanpa logo).
+    var iconEmoji by remember(editId) { mutableStateOf(existing?.iconEmoji ?: "") }
     var titleError by remember { mutableStateOf(false) }
+    // RONDE 6 — pesan validasi jam lampau untuk todo sekali jalan (Ulangi=Tidak).
+    var pastTimeError by remember { mutableStateOf("") }
+    // RONDE 6 — jendela hari aktif user (untuk teks bantuan checklist).
+    val formContext = LocalContext.current
+    val prefs = remember { AppPrefs(formContext) }
+    val windowLabel = "%02d.%02d–%02d.%02d".format(
+        prefs.dayStartMinutes / 60, prefs.dayStartMinutes % 60,
+        prefs.dayEndMinutes / 60, prefs.dayEndMinutes % 60
+    )
     var showDatePicker by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf<String?>(null) } // "start" | "end"
 
@@ -139,9 +167,9 @@ fun FormScreen(
         "custom" -> toneUri
         else -> null
     }
-    val dirty = remember(title, date, startMin, endMin, template, repeat, reminder, intervalValueText, intervalUnit, savedToneUri, priority, category, note, existing) {
+    val dirty = remember(title, date, startMin, endMin, template, repeat, reminder, intervalValueText, intervalUnit, savedToneUri, priority, category, note, iconEmoji, existing) {
         if (existing == null) {
-            title.isNotBlank() || note.isNotBlank()
+            title.isNotBlank() || note.isNotBlank() || iconEmoji.isNotBlank()
         } else {
             title != existing.title || date.toEpochDay() != existing.dateEpochDay ||
                 startMin != existing.startMinutes || endMin != existing.endMinutes ||
@@ -149,9 +177,21 @@ fun FormScreen(
                 reminder != existing.reminderMinutesBefore || savedToneUri != existing.ringtoneUri ||
                 intervalValueText != (existing.intervalValue?.toString() ?: "5") ||
                 intervalUnit != (existing.intervalUnit ?: "MENIT") ||
+                iconEmoji != (existing.iconEmoji) ||
                 priority != existing.priority || category != existing.category || note != existing.note
         }
     }
+
+    // RONDE 6 — VALIDASI JAM TODO UTAMA: Ulangi = "Tidak" (sekali jalan) ->
+    // tanggal+jam mulai HARUS setelah waktu realtime HP. Bila ulangan lain,
+    // waktu lampau boleh (occurrence berikutnya yang berlaku). Checklist
+    // (tanpa jam) tidak divalidasi di sini.
+    val pastOnceError: String = if (repeat == "NONE" && startMin != null) {
+        val chosen = LocalDateTime.of(date, LocalTime.of(startMin!! / 60, startMin!! % 60))
+        if (!chosen.isAfter(LocalDateTime.now())) {
+            "Waktu kegiatan sudah lewat. Untuk Ulangi = Tidak, pilih tanggal & jam di masa depan."
+        } else ""
+    } else ""
     LaunchedEffect(dirty) { onDirtyChange(dirty) }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -161,6 +201,22 @@ fun FormScreen(
         OutlinedTextField(title, { title = it; titleError = false }, label = { Text("Judul kegiatan") },
             isError = titleError, modifier = Modifier.fillMaxWidth())
         if (titleError) Text("Judul wajib diisi", color = Color.Red)
+        Spacer(Modifier.height(8.dp))
+
+        // RONDE 6 — logo emoji: satu emoji dari keyboard emoji HP (field
+        // tunggal; yang disimpan hanya grapheme pertama). Bisa dihapus.
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = iconEmoji,
+                onValueChange = { iconEmoji = firstGrapheme(it) },
+                label = { Text("Logo emoji (opsional)") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            if (iconEmoji.isNotBlank()) {
+                TextButton(onClick = { iconEmoji = "" }) { Text("Hapus") }
+            }
+        }
         Spacer(Modifier.height(8.dp))
 
         // FlowRow: tombol tanggal/jam lebar mengikuti konten dan membungkus rapi —
@@ -174,6 +230,11 @@ fun FormScreen(
             OutlinedButton(onClick = { pickingTime = "end" }) { Text("Selesai: " + Dates.formatTime(endMin)) }
         }
         if (startMin != null) TextButton(onClick = { startMin = null; endMin = null }) { Text("Hapus jam (jadikan checklist)") }
+        // RONDE 6: pesan validasi waktu lampau tampil langsung (dan simpan diblokir di bawah).
+        val shownPastError = pastTimeError.ifBlank { pastOnceError }
+        if (shownPastError.isNotBlank()) {
+            Text(shownPastError, color = Color.Red, fontSize = 12.5.sp)
+        }
         Spacer(Modifier.height(8.dp))
 
         Text("Template Tujuan", fontWeight = FontWeight.Bold)
@@ -189,7 +250,7 @@ fun FormScreen(
         if (isChecklistForm) {
             Text("✓ Checklist — Interval Pengulangan", fontWeight = FontWeight.Bold)
             Text(
-                "Berbunyi berulang tiap interval pukul 06.00–22.00, berhenti hari itu saat dicentang selesai.",
+                "Berbunyi berulang tiap interval pukul $windowLabel. Ditandai selesai = timer reset (bunyi lagi setelah +interval).",
                 fontSize = 12.sp, color = Color(0xFF70858E)
             )
             Row(
@@ -268,6 +329,10 @@ fun FormScreen(
             text = "💾 Simpan Kegiatan",
             onClick = {
                 if (title.isBlank()) { titleError = true; return@GradientButton }
+                // RONDE 6: simpan TERBLOKIR untuk todo sekali jalan (Ulangi =
+                // Tidak) yang waktunya sudah lewat — berlaku juga jalur EDIT,
+                // termasuk edit kegiatan yang sudah selesai/dibatalkan selesai.
+                if (pastOnceError.isNotBlank()) { pastTimeError = pastOnceError; return@GradientButton }
                 // RONDE 5: checklist menyimpan interval (reminder "sebelum
                 // mulai" dikosongkan); todo utama menyimpan reminder seperti
                 // biasa dan interval dikosongkan — dua mode tidak tercampur.
@@ -291,7 +356,10 @@ fun FormScreen(
                     },
                     priority = priority,
                     category = category,
-                    note = note
+                    note = note,
+                    // RONDE 6: logo emoji (untuk kegiatan baru, existing==null
+                    // memakai entitas dasar yang iconEmoji-nya "" lalu ditimpa di sini).
+                    iconEmoji = iconEmoji
                 )
                 vm.saveActivity(entity)
                 onDirtyChange(false)

@@ -831,3 +831,171 @@ pemilih nada global.
 - **Catatan jujur:** verifikasi di VM sebatas compile + signature + badging
   + isi dex. Perilaku runtime (rantai interval checklist, picker slide,
   PDF per periode, getar di Xiaomi Redmi) terbukti lewat uji HP berikutnya.
+
+## Perbaikan Ronde 6 — Uji HP v1.0.3 (#91, 24 Okt 2026)
+
+Uji Rama atas v1.0.3 di **Xiaomi Redmi Note 9 Pro** (bukti:
+`../feedback/uji6-*`; diagnostik getar HP: "OK waveform 255 •
+hasVibrator=true • ringer=NORMAL • DND-MATI • amplitudeControl=true").
+LULUS ronde 5: menu Reminder gaya mockup + badge AKTIF, checklist tampil
+beda di Mendatang, diagnostik lengkap. Ronde ini versionCode **5** /
+versionName **1.0.4**, migrasi Room **2 → 3** non-destruktif, backup JSON
+lama tetap kompatibel, TANPA QA (perintah Rama).
+
+### 1. GETAR — DIBEKUKAN atas perintah Rama (amendemen 10.30 WIB)
+
+Item getar ronde 6 (rencana "tembak bersamaan" multi-jalur + kartu
+petunjuk MIUI) **DIBATALKAN/DIBEKUKAN di tengah pengerjaan** atas perintah
+Rama, setelah bisect tuntas: telepon/WA yang masuk **tidak bergetar di
+KEDUA HP Rama** (Redmi Note 9 Pro + Poco) padahal setting getar menyala,
+dan Tes Getar Langsung pun sudah ditekan — jadi masalah getar **bukan
+spesifik Todo Planner** dan belum ada validasi yang pasti. Keputusan:
+**perilaku getar dipertahankan PERSIS seperti v1.0.3** di build ini —
+`ReminderSoundPlayer.kt`, `ReminderChannels.kt` (channel v4), tombol Tes
+Getar Langsung dan diagnostik **tidak diubah sama sekali** — file player
+terverifikasi identik byte-per-byte dengan versi v1.0.3 di repo.
+Item dibuka lagi hanya bila ada validasi baru dari Rama.
+
+### 2. Bug: todo yang sudah ditandai selesai MASIH BUNYI — fix dua lapis
+
+**Akar masalah persisnya di kode ronde 5:**
+- **(a) Pembatalan tidak simetris & skema kode bertabrakan.**
+  `ReminderScheduler.cancel()` lama hanya membatalkan 4 kode broadcast
+  (early `id*2`, start `id*2+1`, checklist `700000+id`, legacy `id`).
+  Skema `id*2 / id*2+1` **bertabrakan antar-kegiatan** (kode legacy
+  kegiatan id genap N sama dengan kode early kegiatan id N/2), dan
+  pembatalan **tidak pernah menyentuh varian WAKE/full-screen** —
+  PendingIntent `getActivity` berkode alarm **+500.000** yang dibuat di
+  `ReminderReceiver` & `ReminderSoundService`. Jadi selalu ada jalur
+  PendingIntent occurrence yang tidak ikut terbatalkan.
+- **(b) Receiver tidak pernah memeriksa database.** `ReminderReceiver`
+  ronde <=5 membunyikan alarm apa adanya dari extras intent — tidak ada
+  cek `isDoneOn(occEpochDay)`. Setiap alarm yang lolos dari pembatalan
+  (tabrakan kode di atas, alarm yatim, race penjadwalan ulang) **pasti**
+  tetap berbunyi walau occurrence-nya sudah selesai. Inilah penentu
+  akhirnya: tidak ada rem kedua sama sekali.
+
+**Perbaikan ronde 6:**
+- **Lapis (a):** skema request code BARU anti-tabrakan — basis
+  `2.000.000 + id*10 + jenis` (0=awal, 1=mulai, 2=checklist); tidak
+  bertabrakan dengan kode lama, kode tes (990.002), maupun varian
+  WAKE-nya sendiri. `ReminderScheduler.cancelAll()` membatalkan SEMUA
+  varian milik satu kegiatan: alarm awal + pas-mulai + rantai checklist
+  pada skema baru **dan** skema lama (alarm yatim versi sebelumnya ikut
+  mati), varian WAKE (+500.000) dari semua kode itu, serta notifikasi
+  yang telanjur tampil. `toggleDone` di ViewModel kini memanggil
+  `cancelAll` secara eksplisit SEBELUM status baru disimpan, lalu
+  `schedule()` (yang juga diawali `cancelAll`) memasang alarm occurrence
+  berikutnya saja. Daftar kode dihitung dari fungsi yang sama untuk
+  jalur schedule & cancel — identik by construction.
+- **Lapis (b):** `ReminderReceiver` kini memuat kegiatan dari DB dulu
+  (goAsync) untuk alarm berkegiatan: kegiatan terhapus → batalkan sisa
+  alarmnya, jangan bunyi; occurrence sudah selesai → **JANGAN bunyi**,
+  lewati dan jadwalkan occurrence berikutnya; belum selesai → bunyi
+  seperti biasa (checklist: rantai dilanjutkan). Bila pembacaan DB gagal
+  total, alarm tetap dibunyikan (alarm hilang diam-diam lebih buruk).
+
+### 3. Menu Reminder: section Todo Utama & Checklist terpisah + audit Mendatang
+
+- Layar Reminder kini punya **dua sub-kartu berlabel**: "Mendatang —
+  📌 Todo Utama" dan "Mendatang — ✅ Checklist", masing-masing dengan
+  teks state kosong yang jelas bila tidak ada jadwal. (Beranda tetap
+  memakai daftar gabungan "Reminder Terdekat".)
+- **Audit `nextReminders` (kenapa Todo Utama tidak muncul sama sekali):**
+  entri todo lama dihitung hanya dari waktu pengingat AWAL
+  (mulai − offset). Akibatnya: (i) setelah waktu awal lewat tetapi jam
+  mulai **belum** tiba, todo hilang dari daftar padahal alarm pas-mulai
+  masih terjadwal — untuk offset 1 hari, hilang **satu hari penuh**;
+  (ii) todo ber-reminder "Tanpa" tidak pernah bisa muncul (titik acuannya
+  null). Perbaikan: fungsi domain baru `nextTodoAlarm()` menjadi SATU
+  sumber kebenaran pasangan alarm (dipakai penjadwal **dan** daftar
+  Mendatang): entri = pengingat awal bila masih di masa depan, selain itu
+  alarm pas-mulai; occurrence selesai selalu absen; seri berulang memakai
+  occurrence berikutnya. Hasil audit per kasus: todo sekali jalan masa
+  depan → **muncul**; todo selesai → absen; todo berulang → occurrence
+  berikutnya; checklist → tick interval berikutnya.
+
+### 4. Validasi jam Todo Utama (Ulangi = Tidak)
+
+Di Form Tambah **dan** Edit (termasuk edit setelah "Batalkan Selesai"
+atau edit langsung kegiatan yang sudah selesai): bila Ulangi = "Tidak"
+dan tanggal+jam mulai terpilih **sudah lewat** dari waktu realtime HP,
+simpan **diblokir** dengan pesan merah yang jelas ("Waktu kegiatan
+sudah lewat. Untuk Ulangi = Tidak, pilih tanggal & jam di masa depan.")
+yang juga tampil langsung di form begitu kombinasi itu terpilih. Bila
+Ulangi selain "Tidak" (Harian/Mingguan/Bulanan/Tahunan), waktu lampau
+**boleh** disimpan — occurrence berikutnya yang berlaku.
+
+### 5. Logo emoji per kegiatan (migrasi Room 2 → 3)
+
+- Field DB baru `iconEmoji` (TEXT NOT NULL DEFAULT '') lewat
+  `Migration(2,3)` eksplisit — non-destruktif, tanpa
+  `fallbackToDestructiveMigration`; backup JSON mengekspor field ini dan
+  backup lama tetap bisa diimpor (dibaca "").
+- Form Tambah/Edit (todo & checklist): field "Logo emoji (opsional)" —
+  user mengetik/menempel **satu emoji dari keyboard emoji HP**; yang
+  disimpan hanya **grapheme pertama** (klaster karakter utuh, termasuk
+  emoji ber-codepoint ganda); tombol **Hapus** mengosongkannya.
+- Logo tampil sebelum judul (`displayTitle`) di baris daftar Harian
+  (timeline + checklist), Mingguan/Bulanan/Kalender (ActivityRow),
+  Reminder (baris Mendatang), Beranda, Detail, dan judul notifikasi.
+  Tanpa logo = tampilan persis seperti sebelumnya.
+
+### 6. Jendela hari aktif bisa diatur user
+
+- Setting baru `AppPrefs.dayStartMinutes/dayEndMinutes` (default
+  **06.00 & 22.00**) — diubah dari kartu "🕐 Hari aktif" di layar
+  **Harian** maupun baris pengaturan di **Pengaturan**, memakai
+  `SlideTimePicker` yang sama dengan form.
+- Template Harian merender slot jam mengikuti jendela ini, **dan**
+  jendela alarm berantai checklist otomatis mengikuti setting yang sama
+  (konstanta hardcoded 06.00–22.00 ronde 5 diganti parameter jendela yang
+  diteruskan dari AppPrefs lewat penjadwal & domain). Mengubah jendela
+  menjadwalkan ulang semua alarm.
+
+### 7. Logic checklist berubah: selesai = RESET timer
+
+Menggantikan semantik ronde 5 ("berhenti hari itu saat dicentang"):
+- Checklist yang **sudah berbunyi lalu ditandai selesai**: timernya
+  **RESET** — bunyi berikutnya = **waktu ditandai selesai + interval**
+  pilihan user, lalu +interval lagi selama masih di dalam jendela hari
+  aktif; keluar jendela → lanjut hari kemunculan berikutnya sesuai pola
+  ulangan (tick pertama di awal jendela). Jangkar reset = timestamp
+  selesai per occurrence (`doneTimestamps`).
+- Jadi "selesai" pada checklist = **akui & jadwalkan ulang +interval**,
+  bukan membunuh rantai hari itu. **Status visual checklist hari itu
+  mengikuti aksi terakhir**: setelah ditandai selesai, baris tampil
+  selesai ("Selesai • HH:mm") sementara timer reset tetap berjalan;
+  "Batalkan Selesai" menghapus timestamp → rantai kembali ke tick
+  berjangkar awal jendela.
+- Checklist selesai **tanpa** timestamp (data lama) tidak punya jangkar
+  reset → hari itu dilewati seperti ronde 5 (keamanan).
+- Checklist tetap dikecualikan dari PDF seperti ronde 5.
+
+### Hasil build ronde 6
+- **Status: BUILD SUCCESSFUL** (Gradle 8.7 offline, build bersih
+  `clean assembleDebug`, folder proyek asli di VM ini,
+  `keystore.properties` ADA → signing permanen). Satu error kompilasi
+  sempat muncul (LocalContext di dalam lambda `remember` di FormScreen)
+  — diperbaiki, build ulang lulus; hanya warning deprecation lama.
+- **APK:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **17.018.364 byte (±16,2 MB)**, sha256
+  `326a5288c1bbdb12e08ea4589910d077d1fbf5d9369390a85364080bb7b99fd7`;
+  salinan staging `../TodoPlanner-debug.apk` ditimpa (hash sama,
+  diverifikasi).
+- **GERBANG LOLOS:** `apksigner verify --print-certs` → Signer #1 SHA-256
+  digest = `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+  — SAMA PERSIS dengan keystore permanen → update timpa di atas v1.0.3
+  aman. File keystore terverifikasi masih ada sesudah build.
+- Terverifikasi: package `id.rama.todoplanner` versionCode **5** /
+  versionName **1.0.4**, minSdk 26, targetSdk 34; permission **tetap
+  TANPA INTERNET** (sama seperti v1.0.3); integritas zip utuh (157
+  entri); string dex memuat `iconEmoji`, pesan validasi "Waktu kegiatan
+  sudah lewat…", teks state kosong dua section Reminder, "Logo emoji
+  (opsional)", "Hari aktif", dan teks reset checklist — dan TIDAK memuat
+  penanda tembak-bersamaan getar (item 1 beku, perilaku getar = v1.0.3).
+- **Catatan jujur:** verifikasi di VM sebatas compile + signature +
+  badging + isi dex. Perilaku runtime ronde 6 (pembatalan alarm dua
+  lapis, section Reminder, validasi jam, logo emoji, jendela hari aktif,
+  reset checklist) terbukti lewat uji HP Rama berikutnya. Migrasi Room
+  2→3 bersifat aditif satu kolom — data v1.0.3 utuh saat update timpa.

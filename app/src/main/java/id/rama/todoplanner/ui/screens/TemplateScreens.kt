@@ -114,7 +114,7 @@ private fun CompactRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                occ.activity.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                occ.activity.displayTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
                 color = if (occ.done) Color(0xFF9FB0B8) else Ink,
                 textDecoration = if (occ.done) TextDecoration.LineThrough else null
             )
@@ -158,10 +158,15 @@ fun DailyScreen(
     onExport: () -> Unit = {}
 ) {
     val activities by vm.activities.collectAsState()
+    val profile by vm.profile.collectAsState()
     var date by remember { mutableStateOf(LocalDate.now()) }
     val occs = remember(activities, date) { activities.occurrencesBetween(date, date) }
     val timed = occs.filter { it.activity.startMinutes != null }
     val checklist = occs.filter { it.activity.startMinutes == null }
+    // RONDE 6 — jendela hari aktif user: slot dirender mengikuti jendela ini.
+    val windowStartHour = profile.dayStartMinutes / 60
+    val windowEndHour = profile.dayEndMinutes / 60
+    var pickingWindow by remember { mutableStateOf<String?>(null) } // "start" | "end"
 
     Column(
         modifier = Modifier.fillMaxSize().background(ScreenBg)
@@ -183,10 +188,31 @@ fun DailyScreen(
         }
         Spacer(Modifier.height(12.dp))
 
+        // ===== RONDE 6: pengaturan jendela hari aktif (mengatur slot di
+        // bawah DAN jendela alarm berantai checklist) =====
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "🕐 Hari aktif %02d.%02d–%02d.%02d".format(
+                        profile.dayStartMinutes / 60, profile.dayStartMinutes % 60,
+                        profile.dayEndMinutes / 60, profile.dayEndMinutes % 60
+                    ),
+                    fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Ink,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { pickingWindow = "start" }) { Text("Mulai") }
+                TextButton(onClick = { pickingWindow = "end" }) { Text("Selesai") }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+
         // ===== Satu kartu timeline: jam + titik warna kategori + pill kategori =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                (4..22).forEach { hour ->
+                (windowStartHour..windowEndHour).forEach { hour ->
                     val inHour = timed.filter { (it.activity.startMinutes ?: 0) / 60 == hour }
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
                         Text(
@@ -216,7 +242,7 @@ fun DailyScreen(
                                             .clickable { onOpenDetail(occ) }.padding(vertical = 2.dp)
                                     ) {
                                         Text(
-                                            occ.activity.title, fontWeight = FontWeight.SemiBold,
+                                            occ.activity.displayTitle, fontWeight = FontWeight.SemiBold,
                                             fontSize = 14.sp, color = Ink,
                                             textDecoration = if (occ.done) TextDecoration.LineThrough else null
                                         )
@@ -236,7 +262,7 @@ fun DailyScreen(
                             }
                         }
                     }
-                    if (hour < 22) {
+                    if (hour < windowEndHour) {
                         Box(modifier = Modifier.fillMaxWidth().padding(start = 46.dp).height(1.dp).background(Color(0xFFEDF3F6)))
                     }
                 }
@@ -280,6 +306,20 @@ fun DailyScreen(
             text = "📄 Export PDF Hari Ini",
             onClick = onExport,
             modifier = Modifier.fillMaxWidth()
+        )
+    }
+
+    // RONDE 6: picker jendela hari aktif (komponen slide yang sama dengan form).
+    pickingWindow?.let { which ->
+        id.rama.todoplanner.ui.components.SlideTimePickerDialog(
+            title = if (which == "start") "Jam Mulai Hari Aktif" else "Jam Selesai Hari Aktif",
+            initialMinutes = if (which == "start") profile.dayStartMinutes else profile.dayEndMinutes,
+            onDismiss = { pickingWindow = null },
+            onConfirm = { value ->
+                if (which == "start") vm.setDayWindow(value, profile.dayEndMinutes)
+                else vm.setDayWindow(profile.dayStartMinutes, value)
+                pickingWindow = null
+            }
         )
     }
 }

@@ -90,8 +90,13 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
     }
     // RONDE 4: SATU entri per kegiatan (kemunculan berikutnya saja) — dulu
     // ekspansi 14 hari membuat kegiatan harian mendominasi daftar.
-    val upcomingReminders = remember(activities, now) {
-        activities.nextReminders(now, limit = 3)
+    // RONDE 6: jendela checklist mengikuti setting hari aktif user (profile).
+    val upcomingReminders = remember(activities, now, profile.dayStartMinutes, profile.dayEndMinutes) {
+        activities.nextReminders(
+            now, limit = 3,
+            windowStart = java.time.LocalTime.of(profile.dayStartMinutes / 60, profile.dayStartMinutes % 60),
+            windowEnd = java.time.LocalTime.of(profile.dayEndMinutes / 60, profile.dayEndMinutes % 60)
+        )
     }
     // Streak: hari beruntun (mundur dari hari ini/kemarin) yang semua kegiatannya selesai & ada kegiatan.
     val streak = remember(activities, today) {
@@ -321,7 +326,7 @@ private fun UpcomingItem(occ: Occurrence, onClick: () -> Unit) {
         )
         Spacer(Modifier.width(10.dp))
         Column {
-            Text(occ.activity.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Ink)
+            Text(occ.activity.displayTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Ink)
             val end = occ.activity.endMinutes
             val timeText = if (end != null) {
                 "${Dates.formatTime(occ.activity.startMinutes)}–${Dates.formatTime(end)}"

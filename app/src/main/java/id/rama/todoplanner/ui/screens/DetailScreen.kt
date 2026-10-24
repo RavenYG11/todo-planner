@@ -86,7 +86,7 @@ fun DetailScreen(
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text(activity.title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
+                    Text(activity.displayTitle, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
                     CategoryPill(activity.category)
                 }
                 Spacer(Modifier.height(8.dp))
@@ -102,7 +102,13 @@ fun DetailScreen(
                 DetailLine(
                     "Reminder",
                     if (activity.isChecklist) {
-                        if (activity.intervalMillis() != null) "Tiap ${activity.intervalLabel()} (06.00–22.00)"
+                        // RONDE 6: jendela mengikuti setting hari aktif user.
+                        val prefs = AppPrefs(context)
+                        val win = "%02d.%02d–%02d.%02d".format(
+                            prefs.dayStartMinutes / 60, prefs.dayStartMinutes % 60,
+                            prefs.dayEndMinutes / 60, prefs.dayEndMinutes % 60
+                        )
+                        if (activity.intervalMillis() != null) "Tiap ${activity.intervalLabel()} ($win) • selesai = reset +interval"
                         else "Tanpa reminder"
                     } else reminderLabel(activity.reminderMinutesBefore)
                 )
