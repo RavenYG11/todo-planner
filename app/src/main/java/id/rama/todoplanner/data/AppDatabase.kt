@@ -18,11 +18,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *    (logo emoji per kegiatan; "" = tanpa logo).
  *  - 3 -> 4 (ronde 7): activities.dailyDoneLog TEXT NOT NULL DEFAULT ''
  *    (daftar waktu penandaan selesai Daily Reminder per hari; "" = belum ada).
+ *  - 4 -> 5 (ronde 9): activities.colorHex TEXT (nullable; null = ikut
+ *    warna kategori lama). Kolom nullable = data lama tidak perlu diisi.
  * Kolom lama tidak pernah diubah/dihapus; backup JSON lama tetap bisa
  * diimpor karena field baru di BackupManager dibaca dengan nilai default
  * bila tidak ada. TIDAK memakai fallbackToDestructiveMigration.
  */
-@Database(entities = [ActivityEntity::class, TargetEntity::class], version = 4, exportSchema = false)
+@Database(entities = [ActivityEntity::class, TargetEntity::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
     abstract fun targetDao(): TargetDao
@@ -50,12 +52,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** RONDE 9 — kolom warna pilihan user per kegiatan (nullable = ikut kategori). */
+        val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE activities ADD COLUMN colorHex TEXT")
+            }
+        }
+
         @Volatile private var instance: AppDatabase? = null
         fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext, AppDatabase::class.java, "todo_planner.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
             }
     }
 }

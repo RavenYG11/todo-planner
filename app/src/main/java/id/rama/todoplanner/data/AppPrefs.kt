@@ -69,6 +69,18 @@ class AppPrefs(context: Context) {
         get() = sp.getInt("day_end_minutes", DEFAULT_DAY_END_MINUTES)
         set(v) = sp.edit().putInt("day_end_minutes", v.coerceIn(0, 1439)).apply()
 
+    /**
+     * RONDE 9 (amendemen 6) — warna label "Daily Reminder" GLOBAL (satu
+     * warna untuk semua, bukan per-item), format hex "#RRGGBB".
+     * "" = default hijau lama (#22714F). Disimpan di SharedPreferences
+     * (bukan Room) karena ini pengaturan tampilan global, bukan data
+     * kegiatan — jadi tidak perlu migrasi DB & tidak ikut backup JSON.
+     * Diubah dari Pengaturan; berlaku di semua pill "Daily Reminder".
+     */
+    var dailyReminderColorHex: String
+        get() = sp.getString("daily_reminder_color_hex", "") ?: ""
+        set(v) = sp.edit().putString("daily_reminder_color_hex", v).apply()
+
     companion object {
         const val DEFAULT_DAY_START_MINUTES = 6 * 60
         const val DEFAULT_DAY_END_MINUTES = 22 * 60

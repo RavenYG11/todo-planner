@@ -35,7 +35,11 @@ data class ProfileState(
     val themeMode: String,
     /** RONDE 6: jendela hari aktif user (menit sejak 00:00) — slot Harian + jendela Daily Reminder. */
     val dayStartMinutes: Int,
-    val dayEndMinutes: Int
+    val dayEndMinutes: Int,
+    /** RONDE 9: hex warna label "Daily Reminder" global ("" = hijau default). */
+    val dailyReminderColorHex: String,
+    /** RONDE 9: warna label "Daily Reminder" global, sudah diparse (fallback hijau). */
+    val dailyReminderColor: androidx.compose.ui.graphics.Color
 )
 
 class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
@@ -73,7 +77,10 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
             ?.let { File(it).takeIf { f -> f.exists() }?.lastModified() } ?: 0L,
         globalToneUri = prefs.globalRingtoneUri,
         globalToneName = prefs.globalRingtoneName, themeMode = prefs.themeMode,
-        dayStartMinutes = prefs.dayStartMinutes, dayEndMinutes = prefs.dayEndMinutes
+        dayStartMinutes = prefs.dayStartMinutes, dayEndMinutes = prefs.dayEndMinutes,
+        dailyReminderColorHex = prefs.dailyReminderColorHex,
+        dailyReminderColor = id.rama.todoplanner.ui.components.parseHexColor(prefs.dailyReminderColorHex)
+            ?: id.rama.todoplanner.ui.components.DailyReminderDefaultColor
     )
     private fun refreshProfile() { _profile.value = readProfile() }
 
@@ -140,6 +147,12 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
     }
 
     fun setThemeMode(mode: String) { prefs.themeMode = mode; refreshProfile() }
+
+    /** RONDE 9: ubah warna label "Daily Reminder" global (dari Pengaturan). */
+    fun setDailyReminderColor(hex: String) {
+        prefs.dailyReminderColorHex = hex
+        refreshProfile()
+    }
 
     /**
      * RONDE 6 — ubah jendela hari aktif: simpan ke AppPrefs, segarkan state

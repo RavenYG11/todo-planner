@@ -68,7 +68,14 @@ data class ActivityEntity(
     // [doneTimestamps] yang hanya SATU timestamp per hari untuk Todo Utama.
     // Daily Reminder TIDAK memakai doneDates: menandainya BUKAN state selesai.
     // defaultValue PERSIS sama dengan SQL migrasi 3->4.
-    @ColumnInfo(defaultValue = "") val dailyDoneLog: String = ""
+    @ColumnInfo(defaultValue = "") val dailyDoneLog: String = "",
+    // RONDE 9 — warna pilihan user per kegiatan, format hex "#RRGGBB"
+    // (null = TIDAK dipilih -> ikut warna kategori lama, lihat
+    // ui/components.Common.activityColor). Kolom nullable baru migrasi
+    // Room 4->5, jadi data lama & backup lama (tanpa field ini) aman:
+    // null = perilaku persis sebelum ronde 9. Daily Reminder TIDAK wajib
+    // mengikuti warna ini (hanya Todo Utama yang diwarnai custom).
+    val colorHex: String? = null
 ) {
     /** RONDE 5: Daily Reminder = TANPA jam mulai. Todo Utama = ada jam mulai. */
     val isChecklist: Boolean get() = startMinutes == null

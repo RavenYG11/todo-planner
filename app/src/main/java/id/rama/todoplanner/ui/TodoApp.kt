@@ -146,7 +146,10 @@ fun TodoApp(vm: AppViewModel) {
                 navigate(Screen.Detail(occ.activity.id, occ.date.toEpochDay()))
             }
             when (val s = screen) {
-                is Screen.Home -> HomeScreen(vm, onNavigate = { navigate(it) }, onOpenDetail = openDetail)
+                // RONDE 9: Beranda meneruskan Edit langsung (menu aksi
+                // lingkaran Ritual) ke Form tanpa lewat Detail dulu.
+                is Screen.Home -> HomeScreen(vm, onNavigate = { navigate(it) }, onOpenDetail = openDetail,
+                    onEditActivity = { id -> navigate(Screen.Form(editId = id)) })
                 is Screen.Daily -> DailyScreen(vm, onOpenDetail = openDetail,
                     onAddAt = { date, hour -> navigate(Screen.Form(presetDateEpochDay = date, presetStartMinutes = hour, presetTemplate = "Harian")) },
                     onExport = { navigate(Screen.Export) })
