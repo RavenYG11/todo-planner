@@ -64,7 +64,7 @@ fun NextReminderRow(
     today: LocalDate
 ) {
     val jam = trigger.format(DateTimeFormatter.ofPattern("HH.mm"))
-    val headline = "${reminderDayPrefix(date, today)} $jam — ${activity.title}"
+    val headline = "${reminderDayPrefix(date, today)} $jam — ${activity.displayTitle}"
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
         verticalAlignment = Alignment.Top

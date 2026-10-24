@@ -5,39 +5,38 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import id.rama.todoplanner.MainActivity
 import id.rama.todoplanner.R
+import id.rama.todoplanner.TodoApplication
 import id.rama.todoplanner.data.AppPrefs
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
  * Menerima alarm lalu (1) MEMBUNYIKAN nada + getar DARI KODE dan
  * (2) menampilkan notifikasi heads-up.
  *
- * PERBAIKAN RONDE 2 — akar masalah ronde 1: bunyi hanya digantungkan ke
- * notification channel (setSound di channel v2 "reminder2_*"). Di HP
- * Huawei/EMUI Rama pendekatan channel-only TERBUKTI tidak cukup: notifikasi
- * tampil bagus tetapi senyap & tidak getar (EMUI dapat membungkam channel —
- * klasifikasi/pengaturan channel per aplikasi berada di luar kendali kode).
+ * PERBAIKAN RONDE 2 — bunyi diputar langsung dari kode oleh
+ * [ReminderSoundPlayer] (MediaPlayer, AudioAttributes USAGE_ALARM) lewat
+ * [ReminderSoundService]; channel hanya untuk tampilan.
  *
- * Pendekatan tuntas ronde 2:
- *  1. Bunyi diputar langsung dari kode oleh [ReminderSoundPlayer]
- *     (MediaPlayer, AudioAttributes USAGE_ALARM — jalur audio jam alarm)
- *     lewat [ReminderSoundService] (foreground, proses dijamin hidup);
- *     bila OEM menolak start service dari latar, jatuh ke pemutar langsung
- *     di receiver ini. Nada pilihan diverifikasi bisa dibaca; gagal →
- *     fallback nada alarm/notifikasi bawaan. TIDAK ada jalur senyap,
- *     kecuali user sendiri memilih nada "Senyap" (tetap getar).
- *  2. Getar juga dari kode ([ReminderSoundPlayer] + Vibrator, pola eksplisit)
- *     untuk SEMUA prioritas kegiatan.
- *  3. Channel v3 ([ReminderChannels]) SENGAJA senyap — hanya untuk tampilan
- *     heads-up; channel lama v1/ronde-1 dibersihkan.
- *  4. Notifikasi membawa deleteIntent + aksi "Matikan Bunyi" →
- *     [StopSoundReceiver]; mengetuk notifikasi membuka aplikasi dan
- *     MainActivity menghentikan bunyi.
+ * PERBAIKAN RONDE 6 — CEK ULANG STATUS SELESAI DARI DB SEBELUM BUNYI
+ * (lapis kedua perbaikan bug "todo sudah selesai masih bunyi"):
+ * ronde <=5 receiver ini membunyikan alarm APA ADANYA dari extras intent,
+ * tanpa pernah memeriksa database. Akibatnya alarm yatim/terlambat yang
+ * lolos dari pembatalan (skema kode lama, race penjadwalan ulang) PASTI
+ * tetap berbunyi walau occurrence-nya sudah ditandai selesai. Kini untuk
+ * alarm berkegiatan (bukan tes): muat kegiatan dari DB dulu —
+ *  - kegiatan sudah dihapus -> batalkan semua sisa alarmnya, JANGAN bunyi;
+ *  - occurrence (EXTRA_OCC_EPOCH_DAY) sudah selesai -> JANGAN bunyi,
+ *    lewati dan jadwalkan occurrence berikutnya;
+ *  - selain itu -> bunyi seperti biasa; khusus checklist, setelah bunyi
+ *    jadwalkan tick berikutnya (alarm berantai).
+ * Bila pembacaan DB gagal total (pengecualian), alarm tetap dibunyikan —
+ * alarm yang hilang diam-diam lebih buruk daripada bunyi berlebih sesekali.
  */
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -46,31 +45,66 @@ class ReminderReceiver : BroadcastReceiver() {
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Todo Planner"
         val text = intent.getStringExtra(EXTRA_TEXT) ?: "Pengingat kegiatanmu"
         val toneUri = intent.getStringExtra(EXTRA_TONE_URI)
+        val kind = intent.getStringExtra(EXTRA_KIND)
         // RONDE 4: identitas kegiatan untuk fullScreenIntent -> Detail.
         val activityId = intent.getLongExtra(EXTRA_ACTIVITY_ID, 0L)
         val occEpochDay = intent.getLongExtra(EXTRA_OCC_EPOCH_DAY, 0L)
-        val channelId = ReminderChannels.ensureChannel(context, toneUri)
 
-        startSound(context, notifId, title, text, channelId, toneUri, activityId, occEpochDay)
-        postNotification(context, notifId, title, text, channelId, activityId, occEpochDay)
+        // Alarm tes (tanpa kegiatan) langsung bunyi — tidak ada status DB.
+        if (activityId <= 0L || kind == "test") {
+            ring(context, notifId, title, text, toneUri, activityId, occEpochDay)
+            return
+        }
 
-        // RONDE 5 — alarm BERANTAI checklist: begitu satu tick berbunyi,
-        // jadwalkan tick berikutnya. Bila checklist sudah dicentang selesai
-        // untuk hari itu (atau dihapus), penjadwalan ulang tidak menghasilkan
-        // alarm hari itu lagi — rantai berhenti permanen untuk hari itu.
-        if (intent.getStringExtra(EXTRA_KIND) == ReminderScheduler.KIND_CHECKLIST && activityId > 0L) {
-            val pending = goAsync()
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                try {
-                    val app = context.applicationContext as? id.rama.todoplanner.TodoApplication
-                    val act = app?.repository?.getActivity(activityId)
-                    if (app != null && act != null) {
+        // RONDE 6: verifikasi DB dulu (goAsync agar receiver tidak dibunuh
+        // sebelum coroutine selesai).
+        val pending = goAsync()
+        val appCtx = context.applicationContext
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val app = appCtx as? TodoApplication
+                val act = app?.repository?.getActivity(activityId)
+                when {
+                    app == null -> ring(context, notifId, title, text, toneUri, activityId, occEpochDay)
+                    act == null -> ReminderScheduler.cancelAll(appCtx, activityId)
+                    act.isDoneOn(occEpochDay) -> {
+                        // SELESAI = JANGAN bunyi. Jadwalkan occurrence
+                        // berikutnya dari keadaan terbaru (schedule juga
+                        // membatalkan semua sisa alarm occurrence ini).
+                        // Khusus checklist: schedule menghitung tick RESET
+                        // (selesai + interval) sesuai semantik ronde 6 —
+                        // alarm yang baru saja berbunyi ini adalah tick
+                        // SEBELUM ditandai selesai, jadi tick reset yang
+                        // benar sudah/akan dipasang oleh toggleDone; panggilan
+                        // ini hanya memastikan tidak ada sisa alarm yatim.
                         ReminderScheduler.schedule(app, act, app.prefs)
                     }
-                } catch (e: Exception) { /* rantai berhenti; rescheduleAll saat app dibuka memulihkan */ }
-                finally { pending.finish() }
+                    else -> {
+                        ring(context, notifId, title, text, toneUri, activityId, occEpochDay)
+                        // Alarm BERANTAI checklist: setelah satu tick berbunyi,
+                        // jadwalkan tick berikutnya dari keadaan DB terbaru.
+                        if (kind == ReminderScheduler.KIND_CHECKLIST) {
+                            ReminderScheduler.schedule(app, act, app.prefs)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // DB tidak terbaca — bunyikan saja (lihat catatan kelas).
+                try { ring(context, notifId, title, text, toneUri, activityId, occEpochDay) } catch (e2: Exception) { /* abaikan */ }
+            } finally {
+                pending.finish()
             }
         }
+    }
+
+    /** Bunyikan + tampilkan notifikasi (jalur ronde 2/4, tidak berubah). */
+    private fun ring(
+        context: Context, notifId: Int, title: String, text: String,
+        toneUri: String?, activityId: Long, occEpochDay: Long
+    ) {
+        val channelId = ReminderChannels.ensureChannel(context, toneUri)
+        startSound(context, notifId, title, text, channelId, toneUri, activityId, occEpochDay)
+        postNotification(context, notifId, title, text, channelId, activityId, occEpochDay)
     }
 
     /** Jalur utama: foreground service. Jalur cadangan: putar langsung di sini. */
@@ -100,7 +134,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 )
             )
         } catch (e: Exception) {
-            // EMUI/OEM menolak start FGS dari latar -> putar langsung dari receiver.
+            // OEM menolak start FGS dari latar -> putar langsung dari receiver.
             ReminderSoundPlayer.play(context, toneUri)
         }
     }
@@ -137,11 +171,7 @@ class ReminderReceiver : BroadcastReceiver() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            // RONDE 4: layar MENYALA & alert tampil penuh walau HP terkunci —
-            // fullScreenIntent (intent WAKE) membuka MainActivity
-            // (showWhenLocked + turnScreenOn diatur di MainActivity untuk
-            // intent ini) langsung ke Detail kegiatan. Butuh permission
-            // USE_FULL_SCREEN_INTENT.
+            // RONDE 4: layar MENYALA & alert tampil penuh walau HP terkunci.
             .setFullScreenIntent(wakeIntent, true)
             .setContentIntent(openIntent)
             .setDeleteIntent(stopIntent)

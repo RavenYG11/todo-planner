@@ -62,7 +62,7 @@ fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () ->
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = occ.activity.title,
+                    text = occ.activity.displayTitle,
                     fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
                     textDecoration = if (occ.done) TextDecoration.LineThrough else null,
                     color = if (occ.done) Color(0xFF9FB0B8) else Color(0xFF22333D)

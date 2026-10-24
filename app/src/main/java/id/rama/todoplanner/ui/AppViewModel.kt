@@ -32,7 +32,10 @@ data class ProfileState(
     val photoStamp: Long,
     val globalToneUri: String?,
     val globalToneName: String,
-    val themeMode: String
+    val themeMode: String,
+    /** RONDE 6: jendela hari aktif user (menit sejak 00:00) — slot Harian + jendela checklist. */
+    val dayStartMinutes: Int,
+    val dayEndMinutes: Int
 )
 
 class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
@@ -69,7 +72,8 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
         photoStamp = prefs.avatarPhotoPath.takeIf { it.isNotBlank() }
             ?.let { File(it).takeIf { f -> f.exists() }?.lastModified() } ?: 0L,
         globalToneUri = prefs.globalRingtoneUri,
-        globalToneName = prefs.globalRingtoneName, themeMode = prefs.themeMode
+        globalToneName = prefs.globalRingtoneName, themeMode = prefs.themeMode,
+        dayStartMinutes = prefs.dayStartMinutes, dayEndMinutes = prefs.dayEndMinutes
     )
     private fun refreshProfile() { _profile.value = readProfile() }
 
@@ -138,6 +142,18 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
     fun setThemeMode(mode: String) { prefs.themeMode = mode; refreshProfile() }
 
     /**
+     * RONDE 6 — ubah jendela hari aktif: simpan ke AppPrefs, segarkan state
+     * (slot Harian ikut berubah), dan jadwalkan ulang semua alarm checklist
+     * karena jendela bunyinya mengikuti setting yang sama.
+     */
+    fun setDayWindow(startMinutes: Int, endMinutes: Int) {
+        prefs.dayStartMinutes = startMinutes
+        prefs.dayEndMinutes = endMinutes
+        refreshProfile()
+        rescheduleAllReminders()
+    }
+
+    /**
      * Jadwalkan ulang SEMUA reminder (ronde 2, audit jalur kegiatan lama):
      * dipanggil tiap aplikasi dibuka — kegiatan yang dibuat sebelum update pun
      * pindah ke skema alarm terbaru (2 alarm + bunyi dari kode). BootReceiver
@@ -157,15 +173,27 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
         id.rama.todoplanner.reminder.ReminderChannels.ensureChannel(app, prefs.globalRingtoneUri)
 
     /**
-     * RONDE 5: tandai selesai menyimpan TIMESTAMP selesai per occurrence
-     * (lihat ActivityEntity.withDoneOn) DAN menjadwalkan ulang alarm dari
-     * keadaan baru — occurrence yang selesai alarmnya ter-cancel (penjadwal
-     * melewati occurrence selesai), "Batalkan Selesai" menjadwalkan ulang
-     * dari nol (restart penuh). Untuk checklist, penjadwalan ulang inilah
-     * yang menghentikan / menghidupkan lagi rantai interval hari itu.
+     * Tandai selesai / batalkan selesai SATU occurrence.
+     *
+     * RONDE 5: timestamp selesai per occurrence disimpan; penjadwalan ulang
+     * dari keadaan baru membuat occurrence selesai hilang dari Reminder
+     * Terdekat dan alarmnya tidak dijadwalkan lagi.
+     *
+     * RONDE 6 (fix bug "sudah selesai masih bunyi", lapis a): SEBELUM status
+     * baru disimpan, batalkan dulu SEMUA PendingIntent occurrence ini lewat
+     * ReminderScheduler.cancelAll — alarm awal, alarm pas-mulai, varian
+     * WAKE/full-screen (+500.000), rantai checklist, dan kode skema lama.
+     * Setelah simpan, schedule() (yang juga memulai dengan cancelAll)
+     * memasang alarm occurrence berikutnya saja. Receiver memeriksa ulang
+     * status selesai dari DB sebelum bunyi sebagai lapis kedua.
+     *
+     * Checklist (semantik baru ronde 6): "selesai" = akui & RESET timer —
+     * schedule() memasang tick berikutnya pada (waktu selesai + interval);
+     * "Batalkan Selesai" = kembali ke tick berjangkar awal jendela.
      */
     fun toggleDone(activity: ActivityEntity, epochDay: Long, done: Boolean) {
         viewModelScope.launch {
+            ReminderScheduler.cancelAll(app, activity.id)
             val updated = activity.withDoneOn(epochDay, done)
             repo.saveActivity(updated)
             ReminderScheduler.schedule(app, updated, prefs)
@@ -175,6 +203,7 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
     /** Varian dengan callback SETELAH simpan berhasil — dipakai Detail (ronde 3: langsung kembali ke Beranda). */
     fun toggleDone(activity: ActivityEntity, epochDay: Long, done: Boolean, onComplete: () -> Unit) {
         viewModelScope.launch {
+            ReminderScheduler.cancelAll(app, activity.id)
             val updated = activity.withDoneOn(epochDay, done)
             repo.saveActivity(updated)
             ReminderScheduler.schedule(app, updated, prefs)
