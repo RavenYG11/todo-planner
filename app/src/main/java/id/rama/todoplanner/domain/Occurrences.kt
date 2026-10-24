@@ -9,6 +9,9 @@ import java.time.temporal.ChronoUnit
 /** Satu kemunculan nyata sebuah kegiatan pada satu tanggal. */
 data class Occurrence(val activity: ActivityEntity, val date: LocalDate) {
     val done: Boolean get() = activity.isDoneOn(date.toEpochDay())
+
+    /** RONDE 5: epoch millis waktu occurrence ini diselesaikan; null bila belum / data lama. */
+    val completedAtMillis: Long? get() = activity.completedAtMillis(date.toEpochDay())
 }
 
 /** Apakah [activity] muncul pada [date] menurut aturan ulanginya? (kalender Gregorian via java.time) */
@@ -60,6 +63,62 @@ fun ActivityEntity.nextReminder(now: LocalDateTime): Pair<LocalDate, LocalDateTi
     return null
 }
 
+/* ================= RONDE 5: checklist ber-interval ================= */
+
+/** Jendela bunyi checklist dalam 1 hari: 06.00–22.00 (keputusan manager, spek ronde 5). */
+val CHECKLIST_WINDOW_START: LocalTime = LocalTime.of(6, 0)
+val CHECKLIST_WINDOW_END: LocalTime = LocalTime.of(22, 0)
+
+/**
+ * Trigger checklist BERIKUTNYA setelah [now]:
+ * pada hari kemunculannya, bunyi berulang tiap interval di dalam jendela
+ * 06.00–22.00 (tick pertama tepat 06.00, lalu +interval, ... <= 22.00).
+ * Occurrence yang sudah dicentang selesai untuk hari itu DILEWATI total
+ * (berhenti permanen hari itu) — pencarian lanjut ke hari kemunculan berikut.
+ * Mengembalikan (tanggal occurrence, waktu trigger) atau null.
+ */
+fun ActivityEntity.checklistNextTrigger(now: LocalDateTime): Pair<LocalDate, LocalDateTime>? {
+    if (!isChecklist) return null
+    val intervalMs = intervalMillis() ?: return null
+    var d = LocalDate.ofEpochDay(dateEpochDay)
+    if (d.isBefore(now.toLocalDate())) d = now.toLocalDate()
+    repeat(370) {
+        if (occursOn(d) && !isDoneOn(d.toEpochDay())) {
+            val windowStart = LocalDateTime.of(d, CHECKLIST_WINDOW_START)
+            val windowEnd = LocalDateTime.of(d, CHECKLIST_WINDOW_END)
+            if (now.isBefore(windowStart)) return d to windowStart
+            if (now.isBefore(windowEnd) || now == windowEnd) {
+                val elapsedMs = java.time.Duration.between(windowStart, now).toMillis()
+                val steps = elapsedMs / intervalMs + 1
+                val candidate = windowStart.plus(java.time.Duration.ofMillis(steps * intervalMs))
+                if (!candidate.isAfter(windowEnd)) return d to candidate
+            }
+        }
+        d = d.plusDays(1)
+    }
+    return null
+}
+
+/**
+ * Trigger "Reminder Terdekat" BERIKUTNYA untuk kegiatan apa pun (ronde 5):
+ *  - Checklist (tanpa jam + interval): trigger interval berikutnya.
+ *  - Todo Utama: reminder kemunculan berikutnya — occurrence yang SUDAH
+ *    SELESAI dilewati (tidak boleh tampil lagi, kasus uji Rama ronde 4).
+ */
+fun ActivityEntity.nextReminderEntry(now: LocalDateTime): Pair<LocalDate, LocalDateTime>? {
+    if (isChecklist) return checklistNextTrigger(now)
+    var d = LocalDate.ofEpochDay(dateEpochDay)
+    if (d.isBefore(now.toLocalDate())) d = now.toLocalDate()
+    repeat(370) {
+        if (occursOn(d) && !isDoneOn(d.toEpochDay())) {
+            val t = reminderDateTime(d)
+            if (t != null && t.isAfter(now)) return d to t
+        }
+        d = d.plusDays(1)
+    }
+    return null
+}
+
 /**
  * RONDE 4 — daftar "Reminder Terdekat" yang BENAR secara presentasi:
  * SATU entri per kegiatan = kemunculan berikutnya SAJA.
@@ -75,6 +134,6 @@ fun List<ActivityEntity>.nextReminders(
     now: LocalDateTime,
     limit: Int
 ): List<Triple<ActivityEntity, LocalDate, LocalDateTime>> =
-    mapNotNull { a -> a.nextReminder(now)?.let { (d, t) -> Triple(a, d, t) } }
+    mapNotNull { a -> a.nextReminderEntry(now)?.let { (d, t) -> Triple(a, d, t) } }
         .sortedWith(compareBy({ it.third }, { it.first.title.lowercase() }))
         .take(limit)

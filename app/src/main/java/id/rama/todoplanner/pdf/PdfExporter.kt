@@ -15,7 +15,11 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.domain.Occurrence
+import id.rama.todoplanner.domain.PdfBlock
+import id.rama.todoplanner.domain.buildPdfBlocks
+import id.rama.todoplanner.domain.onlyTodoUtama
 import java.io.File
 import java.io.FileOutputStream
 import java.time.LocalDate
@@ -26,32 +30,20 @@ import java.util.Locale
 /**
  * Membuat PDF beneran dengan PdfDocument native (tanpa library eksternal, tanpa internet).
  *
- * RONDE 3 — desain disamakan dengan mockup "Preview PDF" (uji3-mockup-pdf.jpg):
- *  - A4 portrait 595×842.
- *  - Header band GRADASI FAJAR dengan gambar VEKTOR matahari + awan + 2 lapis
- *    bukit (bukan kotak warna polos), judul aplikasi + nama user di atasnya.
- *  - Judul "Laporan {Periode} — {Bulan Tahun}" (diterima sebagai [periodTitle]
- *    dari layar Export, formatnya sudah "Laporan Bulanan — Oktober 2026" dst)
- *    + subjudul nama user + periode/filter yang dipakai.
- *  - Kartu Ringkasan Progress FAKTUAL dari data asli: total, selesai, %,
- *    dan kategori dengan penyelesaian terbanyak (bila ada) — TIDAK ada
- *    catatan naratif karangan; catatan hanya diturunkan dari data
- *    (kategori paling sering selesai / paling banyak belum selesai).
- *  - Tabel Kegiatan | Tanggal | Kategori | Status: kategori digambar sebagai
- *    PILL pastel rounded-rect + teks berwarna gelap kategorinya; status
- *    "✓ Selesai" / "Mendatang" (belum selesai). Judul panjang dibungkus
- *    (wrap) agar tidak terpotong; baris yang tidak muat pindah halaman.
- *  - Footer: kiri "Dicetak {tanggal, jam} • Todo Planner (full lokal & offline)",
- *    kanan "Halaman X dari Y" — paginasi dihitung dari tata letak nyata.
+ * Desain dasar (ronde 3): A4 portrait, header band gradasi fajar + vektor
+ * matahari/awan/bukit, kartu Ringkasan Progress faktual, pill kategori pastel,
+ * footer tanggal cetak + "Halaman X dari Y" dari paginasi nyata.
+ * Deskripsi kegiatan di bawah judul: 9pt abu-abu italic indent, wrap penuh (ronde 4).
  *
- * RONDE 4 — deskripsi kegiatan ikut dicetak:
- *  - Field `note` tiap kegiatan (bila tidak kosong) digambar DI BAWAH judul
- *    dengan format yang jelas beda: 9pt, abu-abu, ITALIC, indent — dibungkus
- *    penuh multi-baris (tanpa potong/elipsis).
- *  - Simulasi tinggi baris menghitung baris deskripsi, sehingga paginasi
- *    mengalir alami ke berapa pun halaman (tidak ada pembatas 1 halaman;
- *    sudah diverifikasi tidak ada truncate jumlah halaman di exporter ini)
- *    dan footer "Halaman X dari Y" selalu total nyata.
+ * RONDE 5 — DESAIN PER PERIODE DIBEDAKAN (struktur dari domain/PdfStructure):
+ *  - PDF hanya memuat TODO UTAMA — checklist dikeluarkan sama sekali.
+ *  - Penomoran urut per kelompok 1 hari (mulai ulang tiap hari), semua periode.
+ *  - HARIAN : sub-header hari + daftar bernomor; yang selesai berlabel
+ *    "Diselesaikan HH:mm" dari timestamp selesai (tanpa timestamp: "Selesai").
+ *  - MINGGUAN: sub-header HARI khusus (pita tanggal + ringkasan kecil per hari).
+ *  - BULANAN: sub-header MINGGU lalu sub-header hari.
+ *  - TAHUNAN: sub-header BERTINGKAT bulan (pita gradasi) -> minggu -> hari.
+ * Preview di aplikasi memakai buildPdfBlocks yang sama (ExportScreens).
  */
 object PdfExporter {
     private const val PAGE_W = 595 // A4 @72dpi
@@ -59,7 +51,6 @@ object PdfExporter {
     private const val MARGIN = 40f
     private const val CONTENT_W = PAGE_W - 2 * MARGIN
     private val idLocale = Locale("id", "ID")
-    private val dateFmt = DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy", idLocale)
     private val printFmt = DateTimeFormatter.ofPattern("d MMMM yyyy, HH.mm", idLocale)
 
     data class Result(val displayName: String, val location: String, val shareUri: String?)
@@ -74,7 +65,6 @@ object PdfExporter {
         else -> Color.rgb(150, 160, 170)
     }
 
-    /** Warna teks gelap di atas pill pastel kategori (kontras terbaca, bahasa mockup). */
     private fun categoryTextColor(category: String): Int = when (category) {
         "Kerja" -> Color.rgb(146, 52, 43)
         "Keluarga" -> Color.rgb(27, 84, 117)
@@ -95,10 +85,9 @@ object PdfExporter {
         else -> Color.rgb(237, 243, 246)
     }
 
-    /** Tulis PDF ke folder Unduhan (MediaStore) — fallback ke folder aplikasi bila MediaStore gagal. */
-    fun saveToDownloads(context: Context, userName: String, periodTitle: String, periodLabel: String, occurrences: List<Occurrence>): Result {
+    fun saveToDownloads(context: Context, userName: String, periodTitle: String, periodLabel: String, occurrences: List<Occurrence>, period: String = "Harian"): Result {
         val fileName = "TodoPlanner-" + periodTitle.replace(" ", "-").replace("/", "-").replace("—", "-") + ".pdf"
-        val doc = buildDocument(userName, periodTitle, periodLabel, occurrences)
+        val doc = buildDocument(userName, periodTitle, periodLabel, occurrences, period)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, fileName)
@@ -109,11 +98,10 @@ object PdfExporter {
             if (uri != null) {
                 context.contentResolver.openOutputStream(uri)?.use { doc.writeTo(it) }
                 doc.close()
-                val shareFile = writeCacheCopy(context, userName, periodTitle, periodLabel, occurrences, fileName)
+                val shareFile = writeCacheCopy(context, userName, periodTitle, periodLabel, occurrences, fileName, period)
                 return Result(fileName, "Unduhan/TodoPlanner/$fileName", shareFile)
             }
         }
-        // API 26-28 atau MediaStore gagal: folder eksternal aplikasi + tetap bisa dibagikan.
         val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "TodoPlanner").apply { mkdirs() }
         val file = File(dir, fileName)
         FileOutputStream(file).use { doc.writeTo(it) }
@@ -122,51 +110,50 @@ object PdfExporter {
         return Result(fileName, file.absolutePath, shareUri)
     }
 
-    /** Salinan di cache untuk dibagikan lewat share intent. */
-    fun writeCacheCopy(context: Context, userName: String, periodTitle: String, periodLabel: String, occurrences: List<Occurrence>, fileName: String): String {
+    fun writeCacheCopy(context: Context, userName: String, periodTitle: String, periodLabel: String, occurrences: List<Occurrence>, fileName: String, period: String = "Harian"): String {
         val dir = File(context.cacheDir, "pdf").apply { mkdirs() }
         val file = File(dir, fileName)
-        val doc = buildDocument(userName, periodTitle, periodLabel, occurrences)
+        val doc = buildDocument(userName, periodTitle, periodLabel, occurrences, period)
         FileOutputStream(file).use { doc.writeTo(it) }
         doc.close()
         return FileProvider.getUriForFile(context, "id.rama.todoplanner.fileprovider", file).toString()
     }
 
-    /* ---------- Tata letak baris (dipakai untuk paginasi yang benar) ---------- */
+    /* ---------- Kolom (ronde 5: ada kolom nomor urut per hari) ---------- */
+    private const val COL_NUM_X = MARGIN + 4f
+    private const val COL_TITLE_X = 66f
+    private const val COL_TITLE_W = 172f
+    private const val COL_DATE_X = 250f
+    private const val COL_CAT_X = 338f
+    private const val COL_STATUS_X = 434f
+
+    private const val NOTE_INDENT = 10f
+    private const val NOTE_LINE_H = 11.5f
 
     private val titlePaintMeasure = Paint().apply { textSize = 10.5f }
-
-    /** Paint ukur deskripsi — HARUS sama dengan paint gambarnya (9pt italic). */
     private val notePaintMeasure = Paint().apply {
         textSize = 9f
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
     }
-    private const val COL_TITLE_X = MARGIN
-    private const val COL_TITLE_W = 238f
-    private const val COL_DATE_X = 292f
-    private const val COL_CAT_X = 382f
-    private const val COL_STATUS_X = 478f
 
-    /** Indent deskripsi dari tepi kiri kolom judul (pt). */
-    private const val NOTE_INDENT = 10f
-    private const val NOTE_LINE_H = 11.5f
+    private fun blockHeight(block: PdfBlock): Float = when (block.level) {
+        0 -> 32f
+        1 -> 26f
+        2 -> 24f
+        else -> rowHeight(block.occurrence!!)
+    }
 
-    /**
-     * Tinggi satu baris kegiatan: judul dibungkus maks 2 baris + deskripsi
-     * (bila ada) dibungkus PENUH di bawahnya. Baris min 20pt.
-     */
     private fun rowHeight(occ: Occurrence): Float {
-        val lines = wrapText(occ.activity.title, titlePaintMeasure, COL_TITLE_W - 16f, maxLines = 2)
+        val lines = wrapText(occ.activity.title, titlePaintMeasure, COL_TITLE_W - 8f, maxLines = 2)
         var h = maxOf(20f, lines.size * 13f + 7f)
         val note = occ.activity.note
         if (note.isNotBlank()) {
-            val noteLines = wrapFull(note, notePaintMeasure, COL_TITLE_W - 16f - NOTE_INDENT)
+            val noteLines = wrapFull(note, notePaintMeasure, COL_TITLE_W - 8f - NOTE_INDENT)
             h += 2f + noteLines.size * NOTE_LINE_H
         }
         return h
     }
 
-    /** Bungkus teks TANPA batas baris & tanpa elipsis (untuk deskripsi). */
     private fun wrapFull(text: String, paint: Paint, maxWidth: Float): List<String> {
         val words = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
         if (words.isEmpty()) return emptyList()
@@ -200,7 +187,6 @@ object PdfExporter {
                 if (lines.size == maxLines - 1) break
             }
         }
-        // Gabungkan sisa kata ke baris terakhir; elipsis bila masih kelebihan.
         val consumed = lines.joinToString(" ").split(Regex("\\s+")).filter { it.isNotEmpty() }.size
         val rest = words.drop(consumed).joinToString(" ")
         var last = rest
@@ -212,40 +198,54 @@ object PdfExporter {
         return lines.ifEmpty { listOf(text) }
     }
 
-    fun buildDocument(userName: String, periodTitle: String, periodLabel: String, occurrences: List<Occurrence>): PdfDocument {
+    /** Label status baris — Harian memakai "Diselesaikan HH:mm" persis spek ronde 5. */
+    private fun statusText(occ: Occurrence, period: String): String {
+        if (!occ.done) return "Mendatang"
+        val ts = occ.completedAtMillis
+        return if (period == "Harian") {
+            if (ts != null) "Diselesaikan ${Dates.formatCompletedTime(ts)}" else "Selesai"
+        } else {
+            if (ts != null) "✓ Selesai • ${Dates.formatCompletedTime(ts)}" else "✓ Selesai"
+        }
+    }
+
+    fun buildDocument(userName: String, periodTitle: String, periodLabel: String, occurrencesRaw: List<Occurrence>, period: String = "Harian"): PdfDocument {
+        // RONDE 5: checklist TIDAK masuk PDF sama sekali.
+        val occurrences = occurrencesRaw.onlyTodoUtama()
+        val blocks = buildPdfBlocks(period, occurrences)
         val doc = PdfDocument()
         val doneCount = occurrences.count { it.done }
         val pct = if (occurrences.isEmpty()) 0 else doneCount * 100 / occurrences.size
         val printedAt = LocalDateTime.now().format(printFmt)
 
-        // Catatan FAKTUAL turunan data (bukan karangan): kategori dengan
-        // penyelesaian terbanyak & kategori dengan sisa terbanyak.
         val byCat = occurrences.groupBy { it.activity.category }
         val topDone = byCat.maxByOrNull { e -> e.value.count { it.done } }
             ?.takeIf { e -> e.value.count { it.done } > 0 }
         val topPending = byCat.maxByOrNull { e -> e.value.count { !it.done } }
             ?.takeIf { e -> e.value.count { !it.done } > 0 }
 
-        // ----- Paginasi nyata: simulasikan tinggi baris per halaman -----
-        val headerBlockH = 255f // header band + judul + subjudul + kartu ringkasan + kepala tabel (sesuai alur gambar halaman 1 di bawah)
+        // ----- Paginasi nyata atas BLOK (header tidak yatim di kaki halaman) -----
+        val headerBlockH = 255f
         val footerTop = PAGE_H - 44f
-        val pagesRows = ArrayList<List<Occurrence>>()
-        var currentPage = ArrayList<Occurrence>()
+        val pagesBlocks = ArrayList<List<PdfBlock>>()
+        var currentPage = ArrayList<PdfBlock>()
         var yCursor = headerBlockH
-        for (occ in occurrences) {
-            val h = rowHeight(occ)
-            if (yCursor + h > footerTop && currentPage.isNotEmpty()) {
-                pagesRows.add(currentPage)
+        blocks.forEachIndexed { i, block ->
+            val h = blockHeight(block)
+            var needed = h
+            if (block.level < 3 && i + 1 < blocks.size) needed += blockHeight(blocks[i + 1])
+            if (yCursor + needed > footerTop && currentPage.isNotEmpty()) {
+                pagesBlocks.add(currentPage)
                 currentPage = ArrayList()
-                yCursor = 86f // halaman lanjutan: kepala tabel ulang tanpa blok judul besar
+                yCursor = 86f
             }
-            currentPage.add(occ)
+            currentPage.add(block)
             yCursor += h
         }
-        if (currentPage.isNotEmpty() || pagesRows.isEmpty()) pagesRows.add(currentPage)
-        val totalPages = pagesRows.size
+        if (currentPage.isNotEmpty() || pagesBlocks.isEmpty()) pagesBlocks.add(currentPage)
+        val totalPages = pagesBlocks.size
 
-        pagesRows.forEachIndexed { pageIndex, slice ->
+        pagesBlocks.forEachIndexed { pageIndex, slice ->
             val info = PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, pageIndex + 1).create()
             val pdfPage = doc.startPage(info)
             val c = pdfPage.canvas
@@ -259,7 +259,6 @@ object PdfExporter {
                 val sub = Paint().apply { textSize = 10f; color = Color.rgb(90, 105, 115) }
                 c.drawText("$userName • $periodLabel", MARGIN, y, sub); y += 14f
 
-                // Kartu Ringkasan Progress (mockup: kartu pastel berjudul pin)
                 val cardTop = y
                 val cardPaint = Paint().apply { color = Color.rgb(240, 247, 250) }
                 c.drawRoundRect(RectF(MARGIN, cardTop, PAGE_W - MARGIN, cardTop + 52f), 10f, 10f, cardPaint)
@@ -283,7 +282,6 @@ object PdfExporter {
                 }
                 y = cardTop + 66f
             } else {
-                // Halaman lanjutan: pita tipis gradasi agar tetap satu bahasa visual.
                 val grad = LinearGradient(
                     0f, 0f, PAGE_W.toFloat(), 0f,
                     intArrayOf(Color.rgb(111, 179, 220), Color.rgb(246, 177, 122), Color.rgb(143, 208, 168)),
@@ -295,11 +293,12 @@ object PdfExporter {
                 y = 66f
             }
 
-            // Kepala tabel
+            // Kepala kolom (dengan kolom No. penomoran per hari)
             val headBg = Paint().apply { color = Color.rgb(238, 245, 248) }
             c.drawRoundRect(RectF(MARGIN, y - 12f, PAGE_W - MARGIN, y + 6f), 6f, 6f, headBg)
             val headPaint = Paint().apply { textSize = 9.5f; isFakeBoldText = true; color = Color.rgb(90, 105, 115) }
-            c.drawText("Kegiatan", COL_TITLE_X + 6f, y, headPaint)
+            c.drawText("No.", COL_NUM_X, y, headPaint)
+            c.drawText("Kegiatan", COL_TITLE_X, y, headPaint)
             c.drawText("Tanggal", COL_DATE_X, y, headPaint)
             c.drawText("Kategori", COL_CAT_X, y, headPaint)
             c.drawText("Status", COL_STATUS_X, y, headPaint)
@@ -309,53 +308,8 @@ object PdfExporter {
                 val normal = Paint().apply { textSize = 10.5f; color = Color.rgb(34, 51, 61) }
                 c.drawText("Tidak ada kegiatan pada periode & kategori ini.", MARGIN + 6f, y + 6f, normal)
             }
-            val normal = Paint().apply { textSize = 10.5f; color = Color.rgb(34, 51, 61) }
-            val small = Paint().apply { textSize = 10f; color = Color.rgb(52, 70, 79) }
-            // Deskripsi (ronde 4): 9pt abu-abu ITALIC — jelas beda dari judul.
-            val notePaint = Paint().apply {
-                textSize = 9f; color = Color.rgb(108, 120, 128)
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
-            }
-            slice.forEach { occ ->
-                val h = rowHeight(occ)
-                val baseline = y + 11f
-                // Judul (dibungkus, tidak terpotong)
-                val lines = wrapText(occ.activity.title, normal, COL_TITLE_W - 16f, maxLines = 2)
-                lines.forEachIndexed { li, line ->
-                    c.drawText(line, COL_TITLE_X + 6f, baseline + li * 13f, normal)
-                }
-                // Deskripsi di bawah judul (ronde 4), dibungkus penuh tanpa potong.
-                val note = occ.activity.note
-                if (note.isNotBlank()) {
-                    val noteLines = wrapFull(note, notePaint, COL_TITLE_W - 16f - NOTE_INDENT)
-                    noteLines.forEachIndexed { ni, line ->
-                        c.drawText(
-                            line,
-                            COL_TITLE_X + 6f + NOTE_INDENT,
-                            baseline + lines.size * 13f + 2f + ni * NOTE_LINE_H,
-                            notePaint
-                        )
-                    }
-                }
-                // Tanggal
-                c.drawText(occ.date.format(DateTimeFormatter.ofPattern("d MMM yyyy", idLocale)), COL_DATE_X, baseline, small)
-                // Kategori sebagai PILL pastel rounded-rect + teks berwarna
-                val cat = occ.activity.category
-                val pillPaint = Paint().apply { color = categoryPastel(cat) }
-                val catPaint = Paint().apply { textSize = 9.5f; isFakeBoldText = true; color = categoryTextColor(cat) }
-                val pillW = catPaint.measureText(cat) + 18f
-                c.drawRoundRect(RectF(COL_CAT_X, baseline - 11f, COL_CAT_X + pillW, baseline + 5f), 8f, 8f, pillPaint)
-                c.drawText(cat, COL_CAT_X + 9f, baseline, catPaint)
-                // Status
-                val statusPaint = Paint().apply {
-                    textSize = 10f; isFakeBoldText = true
-                    color = if (occ.done) Color.rgb(35, 96, 60) else Color.rgb(90, 105, 115)
-                }
-                c.drawText(if (occ.done) "✓ Selesai" else "Mendatang", COL_STATUS_X, baseline, statusPaint)
-                y += h
-                // Garis pemisah lembut
-                val linePaint = Paint().apply { color = Color.rgb(237, 243, 246) }
-                c.drawRect(MARGIN, y - 3f, PAGE_W - MARGIN, y - 2.4f, linePaint)
+            slice.forEach { block ->
+                y = drawBlock(c, block, y, period)
             }
             drawFooter(c, printedAt, pageIndex + 1, totalPages)
             doc.finishPage(pdfPage)
@@ -363,7 +317,92 @@ object PdfExporter {
         return doc
     }
 
-    /** Header band gradasi fajar + vektor matahari/awan/bukit persis bahasa mockup. */
+    /** Gambar satu blok (header bertingkat / baris bernomor); mengembalikan y berikutnya. */
+    private fun drawBlock(c: Canvas, block: PdfBlock, yTop: Float, period: String): Float {
+        when (block.level) {
+            0 -> { // BULAN — pita gradasi penuh (tingkat teratas, paling khas)
+                val grad = LinearGradient(
+                    MARGIN, 0f, PAGE_W - MARGIN, 0f,
+                    intArrayOf(Color.rgb(155, 139, 212), Color.rgb(111, 179, 220)),
+                    null, Shader.TileMode.CLAMP
+                )
+                c.drawRoundRect(RectF(MARGIN, yTop, PAGE_W - MARGIN, yTop + 26f), 8f, 8f, Paint().apply { shader = grad })
+                val p = Paint().apply { textSize = 12f; isFakeBoldText = true; color = Color.WHITE }
+                c.drawText("📅 ${block.label}", MARGIN + 10f, yTop + 18f, p)
+                block.sublabel?.let {
+                    val s = Paint().apply { textSize = 9f; color = Color.WHITE }
+                    c.drawText(it, PAGE_W - MARGIN - 10f - s.measureText(it), yTop + 18f, s)
+                }
+                return yTop + 32f
+            }
+            1 -> { // MINGGU — pita pastel + aksen kiri coral
+                c.drawRoundRect(RectF(MARGIN, yTop, PAGE_W - MARGIN, yTop + 20f), 6f, 6f,
+                    Paint().apply { color = Color.rgb(252, 240, 216) })
+                c.drawRect(RectF(MARGIN, yTop, MARGIN + 4f, yTop + 20f),
+                    Paint().apply { color = Color.rgb(242, 166, 90) })
+                val p = Paint().apply { textSize = 10.5f; isFakeBoldText = true; color = Color.rgb(122, 86, 16) }
+                c.drawText("🗓️ ${block.label}", MARGIN + 10f, yTop + 14.5f, p)
+                block.sublabel?.let {
+                    val s = Paint().apply { textSize = 9f; color = Color.rgb(122, 86, 16) }
+                    c.drawText(it, PAGE_W - MARGIN - 10f - s.measureText(it), yTop + 14.5f, s)
+                }
+                return yTop + 26f
+            }
+            2 -> { // HARI — pita tanggal tipis biru langit + ringkasan kecil
+                c.drawRoundRect(RectF(MARGIN, yTop, PAGE_W - MARGIN, yTop + 18f), 5f, 5f,
+                    Paint().apply { color = Color.rgb(225, 242, 251) })
+                val p = Paint().apply { textSize = 10.5f; isFakeBoldText = true; color = Color.rgb(27, 84, 117) }
+                c.drawText(block.label, MARGIN + 8f, yTop + 13f, p)
+                block.sublabel?.let {
+                    val s = Paint().apply { textSize = 9f; color = Color.rgb(90, 105, 115) }
+                    c.drawText(it, PAGE_W - MARGIN - 8f - s.measureText(it), yTop + 13f, s)
+                }
+                return yTop + 24f
+            }
+            else -> {
+                val occ = block.occurrence ?: return yTop
+                val h = rowHeight(occ)
+                val baseline = yTop + 11f
+                val normal = Paint().apply { textSize = 10.5f; color = Color.rgb(34, 51, 61) }
+                val small = Paint().apply { textSize = 10f; color = Color.rgb(52, 70, 79) }
+                val notePaint = Paint().apply {
+                    textSize = 9f; color = Color.rgb(108, 120, 128)
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.ITALIC)
+                }
+                // Nomor urut per hari
+                val numPaint = Paint().apply { textSize = 10.5f; isFakeBoldText = true; color = Color.rgb(43, 110, 145) }
+                c.drawText("${block.number}.", COL_NUM_X, baseline, numPaint)
+                val lines = wrapText(occ.activity.title, normal, COL_TITLE_W - 8f, maxLines = 2)
+                lines.forEachIndexed { li, line ->
+                    c.drawText(line, COL_TITLE_X, baseline + li * 13f, normal)
+                }
+                val note = occ.activity.note
+                if (note.isNotBlank()) {
+                    val noteLines = wrapFull(note, notePaint, COL_TITLE_W - 8f - NOTE_INDENT)
+                    noteLines.forEachIndexed { ni, line ->
+                        c.drawText(line, COL_TITLE_X + NOTE_INDENT, baseline + lines.size * 13f + 2f + ni * NOTE_LINE_H, notePaint)
+                    }
+                }
+                c.drawText(occ.date.format(DateTimeFormatter.ofPattern("d MMM yyyy", idLocale)), COL_DATE_X, baseline, small)
+                val cat = occ.activity.category
+                val pillPaint = Paint().apply { color = categoryPastel(cat) }
+                val catPaint = Paint().apply { textSize = 9.5f; isFakeBoldText = true; color = categoryTextColor(cat) }
+                val pillW = catPaint.measureText(cat) + 18f
+                c.drawRoundRect(RectF(COL_CAT_X, baseline - 11f, COL_CAT_X + pillW, baseline + 5f), 8f, 8f, pillPaint)
+                c.drawText(cat, COL_CAT_X + 9f, baseline, catPaint)
+                val statusPaint = Paint().apply {
+                    textSize = 9.5f; isFakeBoldText = true
+                    color = if (occ.done) Color.rgb(35, 96, 60) else Color.rgb(90, 105, 115)
+                }
+                c.drawText(statusText(occ, period), COL_STATUS_X, baseline, statusPaint)
+                val y = yTop + h
+                val linePaint = Paint().apply { color = Color.rgb(237, 243, 246) }
+                c.drawRect(MARGIN, y - 3f, PAGE_W - MARGIN, y - 2.4f, linePaint)
+                return y
+            }
+        }
+    }
+
     private fun drawHeaderBand(c: Canvas, userName: String) {
         val bandH = 104f
         val gradient = LinearGradient(
@@ -372,16 +411,12 @@ object PdfExporter {
             null, Shader.TileMode.CLAMP
         )
         c.drawRect(0f, 0f, PAGE_W.toFloat(), bandH, Paint().apply { shader = gradient })
-
-        // Awan putih (elips bertumpuk, vektor)
         val cloudPaint = Paint().apply { color = Color.WHITE; alpha = 215 }
         fun cloud(cx: Float, cy: Float, rx: Float, ry: Float) {
             c.drawOval(RectF(cx - rx, cy - ry, cx + rx, cy + ry), cloudPaint)
         }
         cloud(120f, 30f, 30f, 9f); cloud(142f, 24f, 19f, 8f)
         cloud(330f, 20f, 23f, 7f); cloud(346f, 15f, 13f, 6f)
-
-        // Matahari terbit + halo di kanan
         c.drawCircle(500f, 58f, 34f, Paint().apply { color = Color.rgb(246, 165, 107); alpha = 45 })
         val sunGrad = LinearGradient(
             500f, 32f, 500f, 84f,
@@ -389,8 +424,6 @@ object PdfExporter {
             null, Shader.TileMode.CLAMP
         )
         c.drawCircle(500f, 58f, 25f, Paint().apply { shader = sunGrad })
-
-        // Bukit 2 lapis di kaki band (path gelombang)
         val hillBack = Path().apply {
             moveTo(0f, 84f)
             quadTo(70f, 66f, 140f, 80f); quadTo(210f, 92f, 280f, 78f)
@@ -405,10 +438,8 @@ object PdfExporter {
             lineTo(PAGE_W.toFloat(), bandH); lineTo(0f, bandH); close()
         }
         c.drawPath(hillFront, Paint().apply { color = Color.rgb(143, 208, 180); alpha = 175 })
-
         val appPaint = Paint().apply { textSize = 19f; color = Color.WHITE; isFakeBoldText = true }
         val namePaint = Paint().apply { textSize = 12f; color = Color.WHITE }
-        // Bayangan teks tipis agar terbaca di atas gradasi terang
         appPaint.setShadowLayer(3f, 0f, 1f, Color.argb(70, 60, 60, 60))
         c.drawText("Todo Planner", MARGIN, 44f, appPaint)
         c.drawText("Laporan kegiatan — $userName", MARGIN, 64f, namePaint)

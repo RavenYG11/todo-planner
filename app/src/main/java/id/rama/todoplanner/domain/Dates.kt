@@ -25,6 +25,19 @@ object Dates {
     fun formatTime(minutes: Int?): String =
         if (minutes == null) "--:--" else LocalTime.of(minutes / 60, minutes % 60).toString()
 
+    /** RONDE 5: format jam selesai "HH:mm" (24 jam, tanpa detik) dari epoch millis. */
+    fun formatCompletedTime(epochMillis: Long): String =
+        java.time.Instant.ofEpochMilli(epochMillis)
+            .atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+            .format(DateTimeFormatter.ofPattern("HH:mm"))
+
+    /**
+     * RONDE 5: label selesai yang tampil di Harian/Checklist/Detail:
+     * "Selesai • HH:mm" bila timestamp ada; "Selesai" saja untuk data lama.
+     */
+    fun completedLabel(epochMillis: Long?): String =
+        if (epochMillis != null) "Selesai • ${formatCompletedTime(epochMillis)}" else "Selesai"
+
     /** Fase dari jam perangkat — batasnya sama persis dengan tabel sapaan di bawah. */
     fun phaseOf(hour: Int): DayPhase = when (hour) {
         in 4..10 -> DayPhase.PAGI

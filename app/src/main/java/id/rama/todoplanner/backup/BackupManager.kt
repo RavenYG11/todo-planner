@@ -24,6 +24,10 @@ object BackupManager {
                 put("ringtoneName", a.ringtoneName ?: JSONObject.NULL)
                 put("priority", a.priority); put("category", a.category)
                 put("note", a.note); put("doneDates", a.doneDates)
+                // RONDE 5: interval checklist + timestamp selesai per occurrence
+                put("intervalValue", a.intervalValue ?: JSONObject.NULL)
+                put("intervalUnit", a.intervalUnit ?: JSONObject.NULL)
+                put("doneTimestamps", a.doneTimestamps)
             })
         }
         root.put("activities", arrA)
@@ -58,7 +62,11 @@ object BackupManager {
                     priority = o.optString("priority", "Sedang"),
                     category = o.optString("category", "Kerja"),
                     note = o.optString("note", ""),
-                    doneDates = o.optString("doneDates", "")
+                    doneDates = o.optString("doneDates", ""),
+                    // RONDE 5: backup LAMA tidak punya field ini -> null/"" (aman).
+                    intervalValue = if (o.isNull("intervalValue")) null else o.optInt("intervalValue"),
+                    intervalUnit = if (o.isNull("intervalUnit")) null else o.optString("intervalUnit"),
+                    doneTimestamps = o.optString("doneTimestamps", "")
                 )
             )
         }
