@@ -58,7 +58,7 @@ class AppPrefs(context: Context) {
     /**
      * RONDE 6 — JENDELA HARI AKTIF yang bisa diatur user (menit sejak 00:00):
      * slot Template Harian dirender mengikuti jendela ini DAN jendela alarm
-     * berantai checklist mengikutinya juga (menggantikan konstanta hardcoded
+     * berantai Daily Reminder mengikutinya juga (menggantikan konstanta hardcoded
      * 06.00–22.00 ronde 5). Default tetap 06.00 & 22.00.
      */
     var dayStartMinutes: Int

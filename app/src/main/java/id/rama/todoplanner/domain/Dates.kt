@@ -32,7 +32,7 @@ object Dates {
             .format(DateTimeFormatter.ofPattern("HH:mm"))
 
     /**
-     * RONDE 5: label selesai yang tampil di Harian/Checklist/Detail:
+     * RONDE 5: label selesai yang tampil di Harian/Daily Reminder/Detail:
      * "Selesai • HH:mm" bila timestamp ada; "Selesai" saja untuk data lama.
      */
     fun completedLabel(epochMillis: Long?): String =

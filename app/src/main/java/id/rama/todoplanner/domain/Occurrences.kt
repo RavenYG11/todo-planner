@@ -12,6 +12,12 @@ data class Occurrence(val activity: ActivityEntity, val date: LocalDate) {
 
     /** RONDE 5: epoch millis waktu occurrence ini diselesaikan; null bila belum / data lama. */
     val completedAtMillis: Long? get() = activity.completedAtMillis(date.toEpochDay())
+
+    /** RONDE 7: daftar waktu penandaan selesai Daily Reminder hari ini (urut naik). */
+    val dailyCompletions: List<Long> get() = activity.dailyCompletionTimes(date.toEpochDay())
+
+    /** RONDE 7: Daily Reminder hari ini sudah pernah ditandai (bukan state selesai). */
+    val dailyMarked: Boolean get() = dailyCompletions.isNotEmpty()
 }
 
 /** Apakah [activity] muncul pada [date] menurut aturan ulanginya? (kalender Gregorian via java.time) */
@@ -63,7 +69,7 @@ fun ActivityEntity.nextReminder(now: LocalDateTime): Pair<LocalDate, LocalDateTi
     return null
 }
 
-/* ================= RONDE 5/6: checklist ber-interval ================= */
+/* ================= RONDE 5/6: Daily Reminder ber-interval ================= */
 
 /**
  * Jendela hari aktif DEFAULT (06.00–22.00). Sejak RONDE 6 jendela ini bisa
@@ -75,7 +81,7 @@ val CHECKLIST_WINDOW_START: LocalTime = LocalTime.of(6, 0)
 val CHECKLIST_WINDOW_END: LocalTime = LocalTime.of(22, 0)
 
 /**
- * Trigger checklist BERIKUTNYA setelah [now] di dalam jendela hari aktif
+ * Trigger Daily Reminder BERIKUTNYA setelah [now] di dalam jendela hari aktif
  * ([windowStart]..[windowEnd], default 06.00–22.00):
  *
  *  - BELUM selesai hari itu: tick berjangkar awal jendela (tick pertama tepat
@@ -105,10 +111,14 @@ fun ActivityEntity.checklistNextTrigger(
         if (occursOn(d)) {
             val ws = LocalDateTime.of(d, windowStart)
             val we = LocalDateTime.of(d, windowEnd)
-            val doneTs = completedAtMillis(d.toEpochDay())
+            // RONDE 7 — jangkar RESET kini dari penandaan Daily Reminder
+            // TERAKHIR hari itu (daftar dailyDoneLog; fallback timestamp
+            // ronde 6). doneDates TIDAK lagi dipakai Daily Reminder.
+            val doneTs = lastDailyCompletion(d.toEpochDay())
+                ?: completedAtMillis(d.toEpochDay()).takeIf { isDoneOn(d.toEpochDay()) }
             when {
-                isDoneOn(d.toEpochDay()) && doneTs != null -> {
-                    // RONDE 6 — jangkar RESET: selesai + interval.
+                doneTs != null -> {
+                    // RONDE 6/7 — jangkar RESET: penandaan terakhir + interval.
                     var cand: LocalDateTime? = LocalDateTime.ofInstant(
                         java.time.Instant.ofEpochMilli(doneTs), java.time.ZoneId.systemDefault()
                     ).plus(interval)
@@ -178,8 +188,8 @@ fun ActivityEntity.nextTodoAlarm(now: LocalDateTime): Triple<LocalDate, LocalDat
 }
 
 /**
- * Trigger "Reminder Terdekat / Mendatang" BERIKUTNYA untuk kegiatan apa pun:
- *  - Checklist (tanpa jam + interval): trigger interval berikutnya di
+ * Trigger "Schedule Warning / Mendatang" BERIKUTNYA untuk kegiatan apa pun:
+ *  - Daily Reminder (tanpa jam + interval): trigger interval berikutnya di
  *    jendela hari aktif (semantik RESET ronde 6).
  *  - Todo Utama: alarm berikutnya dari [nextTodoAlarm] — pengingat awal bila
  *    masih di masa depan, selain itu alarm pas-mulai; todo ber-reminder
@@ -196,7 +206,7 @@ fun ActivityEntity.nextReminderEntry(
 }
 
 /**
- * RONDE 4 — daftar "Reminder Terdekat" yang BENAR secara presentasi:
+ * RONDE 4 — daftar "Schedule Warning" yang BENAR secara presentasi:
  * SATU entri per kegiatan = kemunculan berikutnya SAJA.
  *
  * Dulu layar Beranda & Reminder mengekspansi 14 hari ke depan per kegiatan,

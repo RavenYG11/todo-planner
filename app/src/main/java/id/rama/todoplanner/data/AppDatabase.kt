@@ -16,11 +16,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  *    activities.doneTimestamps TEXT NOT NULL DEFAULT ''.
  *  - 2 -> 3 (ronde 6): activities.iconEmoji TEXT NOT NULL DEFAULT ''
  *    (logo emoji per kegiatan; "" = tanpa logo).
+ *  - 3 -> 4 (ronde 7): activities.dailyDoneLog TEXT NOT NULL DEFAULT ''
+ *    (daftar waktu penandaan selesai Daily Reminder per hari; "" = belum ada).
  * Kolom lama tidak pernah diubah/dihapus; backup JSON lama tetap bisa
  * diimpor karena field baru di BackupManager dibaca dengan nilai default
  * bila tidak ada. TIDAK memakai fallbackToDestructiveMigration.
  */
-@Database(entities = [ActivityEntity::class, TargetEntity::class], version = 3, exportSchema = false)
+@Database(entities = [ActivityEntity::class, TargetEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun activityDao(): ActivityDao
     abstract fun targetDao(): TargetDao
@@ -41,12 +43,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** RONDE 7 — kolom daftar penandaan selesai Daily Reminder per hari. */
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE activities ADD COLUMN dailyDoneLog TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         @Volatile private var instance: AppDatabase? = null
         fun getInstance(context: Context): AppDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext, AppDatabase::class.java, "todo_planner.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build().also { instance = it }
             }
     }
 }

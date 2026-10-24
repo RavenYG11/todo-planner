@@ -24,12 +24,14 @@ object BackupManager {
                 put("ringtoneName", a.ringtoneName ?: JSONObject.NULL)
                 put("priority", a.priority); put("category", a.category)
                 put("note", a.note); put("doneDates", a.doneDates)
-                // RONDE 5: interval checklist + timestamp selesai per occurrence
+                // RONDE 5: interval Daily Reminder + timestamp selesai per occurrence
                 put("intervalValue", a.intervalValue ?: JSONObject.NULL)
                 put("intervalUnit", a.intervalUnit ?: JSONObject.NULL)
                 put("doneTimestamps", a.doneTimestamps)
                 // RONDE 6: logo emoji kegiatan (backup lama tidak punya field ini)
                 put("iconEmoji", a.iconEmoji)
+                // RONDE 7: daftar penandaan selesai Daily Reminder per hari
+                put("dailyDoneLog", a.dailyDoneLog)
             })
         }
         root.put("activities", arrA)
@@ -70,7 +72,9 @@ object BackupManager {
                     intervalUnit = if (o.isNull("intervalUnit")) null else o.optString("intervalUnit"),
                     doneTimestamps = o.optString("doneTimestamps", ""),
                     // RONDE 6: backup LAMA tidak punya field ini -> "" (tanpa logo, aman).
-                    iconEmoji = o.optString("iconEmoji", "")
+                    iconEmoji = o.optString("iconEmoji", ""),
+                    // RONDE 7: backup LAMA tidak punya field ini -> "" (belum ada penandaan, aman).
+                    dailyDoneLog = o.optString("dailyDoneLog", "")
                 )
             )
         }
