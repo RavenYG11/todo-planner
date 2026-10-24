@@ -45,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -108,17 +109,27 @@ private fun CompactRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick
         modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier.size(24.dp).clip(CircleShape)
-                .background(if (shownDone || dailyTimes.isNotEmpty()) GreenDeep else Color.Transparent)
-                .border(2.dp, GreenDeep, CircleShape)
-                .clickable { onToggleDone(if (isDaily) true else !occ.done) },
-            contentAlignment = Alignment.Center
-        ) {
-            if (isDaily) {
-                if (dailyTimes.isNotEmpty()) Text("😉", fontSize = 12.sp)
-            } else if (occ.done) {
-                Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        if (isDaily) {
+            // RONDE 8: penanda Daily Reminder = emoji SPARKLES TELANJANG —
+            // tanpa lingkaran/border latar sama sekali; area ketuk tetap 24 dp.
+            Box(
+                modifier = Modifier.size(24.dp)
+                    .clickable { onToggleDone(true) },
+                contentAlignment = Alignment.Center
+            ) {
+                if (dailyTimes.isNotEmpty()) Text("✨", fontSize = 16.sp)
+            }
+        } else {
+            Box(
+                modifier = Modifier.size(24.dp).clip(CircleShape)
+                    .background(if (shownDone) GreenDeep else Color.Transparent)
+                    .border(2.dp, GreenDeep, CircleShape)
+                    .clickable { onToggleDone(!occ.done) },
+                contentAlignment = Alignment.Center
+            ) {
+                if (occ.done) {
+                    Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
         Spacer(Modifier.width(10.dp))
@@ -141,7 +152,7 @@ private fun CompactRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick
             }
             if (isDaily && dailyTimes.isNotEmpty()) {
                 Text(
-                    "😉 Ditandai selesai: " + dailyTimes.joinToString(" • ") { Dates.formatCompletedTime(it) },
+                    "✨ Ditandai selesai: " + dailyTimes.joinToString(" • ") { Dates.formatCompletedTime(it) },
                     fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep,
                     modifier = Modifier.padding(top = 3.dp)
                 )
@@ -273,6 +284,18 @@ fun DailyScreen(
                                             fontSize = 14.sp, color = Ink,
                                             textDecoration = if (occ.done) TextDecoration.LineThrough else null
                                         )
+                                        // RONDE 8: baris Todo Utama di timeline Harian WAJIB
+                                        // menampilkan deskripsi/catatan di bawah judul
+                                        // (gaya PDF/Detail: abu-abu, wrap penuh, tanpa batas
+                                        // baris); bila kosong tampil seperti sebelumnya.
+                                        if (occ.activity.note.isNotBlank()) {
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(
+                                                occ.activity.note, fontSize = 12.5.sp,
+                                                fontStyle = FontStyle.Italic,
+                                                color = Color(0xFF70858E)
+                                            )
+                                        }
                                         Spacer(Modifier.height(3.dp))
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             CategoryPill(occ.activity.category)
@@ -312,7 +335,7 @@ fun DailyScreen(
         // ===== Daily Reminder terpisah (mockup) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("😉 Daily Reminder Hari Ini", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                Text("✨ Daily Reminder Hari Ini", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
                 if (checklist.isEmpty()) {
                     Text("Belum ada Daily Reminder.", fontSize = 12.5.sp, color = SubInk, modifier = Modifier.padding(top = 6.dp))
                 } else {

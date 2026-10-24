@@ -257,9 +257,9 @@ fun FormScreen(
         // Pola hari pengulangan (chip "Ulangi" di atas) tetap dipertahankan.
         val isChecklistForm = startMin == null
         if (isChecklistForm) {
-            Text("😉 Daily Reminder — Interval Pengulangan", fontWeight = FontWeight.Bold)
+            Text("✨ Daily Reminder — Interval Pengulangan", fontWeight = FontWeight.Bold)
             Text(
-                "Berbunyi berulang tiap interval pukul $windowLabel. Ditandai selesai 😉 = catatan jam tersimpan + timer reset (bunyi lagi setelah +interval).",
+                "Berbunyi berulang tiap interval pukul $windowLabel. Ditandai selesai ✨ = catatan jam tersimpan + timer reset (bunyi lagi setelah +interval).",
                 fontSize = 12.sp, color = Color(0xFF70858E)
             )
             Row(

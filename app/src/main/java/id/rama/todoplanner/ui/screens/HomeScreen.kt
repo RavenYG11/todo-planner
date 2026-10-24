@@ -12,11 +12,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -82,22 +89,34 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
     val total = todays.size
     val progress = if (total == 0) 0f else doneCount.toFloat() / total
     val pct = (progress * 100).toInt()
+    // RONDE 8 — pemisahan Beranda: "Kegiatan Berikutnya" HANYA Todo Utama
+    // (Daily Reminder disaring keluar; ia punya kartu "Ritual" sendiri).
     val upcoming = remember(todays, now) {
         val nowMin = now.hour * 60 + now.minute
-        todays.filter { !it.done }
+        todays.filter { !it.done && !it.activity.isChecklist }
             .sortedWith(compareBy({ if ((it.activity.startMinutes ?: 0) >= nowMin) 0 else 1 }, { it.activity.startMinutes ?: 0 }))
             .take(2)
     }
     // RONDE 4: SATU entri per kegiatan (kemunculan berikutnya saja) — dulu
     // ekspansi 14 hari membuat kegiatan harian mendominasi daftar.
     // RONDE 6: jendela Daily Reminder mengikuti setting hari aktif user (profile).
+    // RONDE 8 — daftar mendatang dipecah dua di semua kartu Beranda:
+    // Todo Utama -> "Kegiatan Berikutnya" & "Schedule Warning";
+    // Daily Reminder -> kartu baru "Ritual" (di bawah). Layar Reminder
+    // (OtherScreens) sudah terpisah sejak ronde 6, jadi tidak diubah
+    // strukturnya — hanya emoji penandanya yang dikoreksi ke ✨.
+    // Koreksi auditor ronde 8: limit diambil 10 lalu dipangkas per jenis
+    // (bukan limit 3 campuran) — kalau tidak, 3 Todo Utama tercepat bisa
+    // mendesak Daily Reminder keluar dari kartu Ritual (atau sebaliknya).
     val upcomingReminders = remember(activities, now, profile.dayStartMinutes, profile.dayEndMinutes) {
         activities.nextReminders(
-            now, limit = 3,
+            now, limit = 10,
             windowStart = java.time.LocalTime.of(profile.dayStartMinutes / 60, profile.dayStartMinutes % 60),
             windowEnd = java.time.LocalTime.of(profile.dayEndMinutes / 60, profile.dayEndMinutes % 60)
         )
     }
+    val upcomingReminderTodos = upcomingReminders.filter { !it.first.isChecklist }.take(3)
+    val upcomingRituals = upcomingReminders.filter { it.first.isChecklist }.take(3)
     // Streak: hari beruntun (mundur dari hari ini/kemarin) yang semua kegiatannya selesai & ada kegiatan.
     val streak = remember(activities, today) {
         var count = 0
@@ -246,19 +265,38 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
         }
         Spacer(Modifier.height(12.dp))
 
-        // ===== Schedule Warning (kartu TERPISAH, mockup) =====
+        // ===== Ritual (kartu BARU ronde 8 — HANYA Daily Reminder) =====
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("🪄 Ritual", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                if (upcomingRituals.isEmpty()) {
+                    Text(
+                        "Belum ada Daily Reminder terjadwal",
+                        fontSize = 12.5.sp, color = Color(0xFF70858E),
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                } else {
+                    upcomingRituals.forEach { (activity, date, time) ->
+                        NextReminderRow(activity, date, time, today)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // ===== Schedule Warning (kartu TERPISAH, mockup; ronde 8: HANYA Todo Utama) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text("🔔 Schedule Warning", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
-                if (upcomingReminders.isEmpty()) {
+                if (upcomingReminderTodos.isEmpty()) {
                     Text(
                         "Belum ada pengingat terjadwal", fontSize = 12.5.sp,
                         color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
                     )
                 } else {
-                    // RONDE 5: baris dibedakan Daily Reminder vs todo utama
-                    // (komponen bersama dengan layar Reminder).
-                    upcomingReminders.forEach { (activity, date, time) ->
+                    // RONDE 8: kartu ini HANYA Todo Utama; Daily Reminder
+                    // sudah pindah ke kartu "Ritual" di atas.
+                    upcomingReminderTodos.forEach { (activity, date, time) ->
                         NextReminderRow(activity, date, time, today)
                     }
                 }
@@ -314,10 +352,8 @@ private fun UpcomingItem(occ: Occurrence, onClick: () -> Unit) {
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier.width(4.dp).height(36.dp)
-                .clip(RoundedCornerShape(4.dp)).background(accent)
-        )
+        // RONDE 8: garis aksen NEON shimmer/shine sweep (lihat ShimmerAccentBar).
+        ShimmerAccentBar(accent)
         Spacer(Modifier.width(10.dp))
         Box(
             modifier = Modifier.width(22.dp).height(22.dp)
@@ -336,6 +372,64 @@ private fun UpcomingItem(occ: Occurrence, onClick: () -> Unit) {
             Text(
                 "$timeText • ${occ.activity.category} • Prioritas ${occ.activity.priority}",
                 fontSize = 12.sp, color = Color(0xFF70858E)
+            )
+        }
+    }
+}
+
+/**
+ * RONDE 8 — garis aksen NEON dengan efek "shimmer/shine sweep": sapuan
+ * cahaya gradasi SILVER yang bergerak melintasi garis, berulang, halus
+ * (bukan kedip opacity). Cara kerja: garis warna kategori diam sebagai
+ * dasar; sebuah segmen pendek bergradasi transparan–perak–transparan
+ * meluncur dari atas ke bawah garis (siklus 2,2 detik, lalu mengulang).
+ * Bila animator sistem mati (reduce motion), garis tampil statis tanpa
+ * sapuan — efek tidak pernah memaksa gerak.
+ */
+@Composable
+private fun ShimmerAccentBar(accent: Color) {
+    val context = LocalContext.current
+    val animatorScale = try {
+        android.provider.Settings.Global.getFloat(
+            context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f
+        )
+    } catch (e: Exception) { 1f }
+    val reduceMotion = animatorScale == 0f
+    val progress: Float = if (reduceMotion) {
+        0f
+    } else {
+        val transition = rememberInfiniteTransition(label = "shimmerAccent")
+        val animated by transition.animateFloat(
+            initialValue = 0f, targetValue = 1f, label = "shimmerSweep",
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2200),
+                repeatMode = RepeatMode.Restart
+            )
+        )
+        animated
+    }
+    Box(
+        modifier = Modifier.width(4.dp).height(36.dp)
+            .clip(RoundedCornerShape(4.dp)).background(accent)
+    ) {
+        if (!reduceMotion) {
+            // Segmen cahaya 14 dp meluncur -14 -> +36 dp (keluar di kedua ujung,
+            // jadi geraknya tampak mulus, bukan melompat).
+            val sweepY = (-14f + progress * 50f).dp
+            Box(
+                modifier = Modifier.width(4.dp).height(14.dp)
+                    .offset(y = sweepY)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Transparent,
+                                Color(0xFFE8ECEF),
+                                Color(0xFFF7F9FA),
+                                Color(0xFFE8ECEF),
+                                Color.Transparent
+                            )
+                        )
+                    )
             )
         }
     }

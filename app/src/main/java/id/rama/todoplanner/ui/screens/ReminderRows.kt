@@ -16,14 +16,13 @@ import androidx.compose.material3.Text
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +38,8 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
+ * RONDE 8 — baris "Schedule Warning / Mendatang" (penanda Daily Reminder kini ✨ telanjang,
+ * dot Todo Utama kini ExpandingGlow; pembaruan RONDE 5 di bawah dipertahankan)
  * RONDE 5 — baris "Schedule Warning / Mendatang" yang dipakai BERSAMA oleh
  * kartu Beranda dan layar Reminder (satu kartu, dua desain baris):
  *  - TODO UTAMA: titik warna kategori + judul "Hari ini HH.mm — Judul" +
@@ -65,14 +66,15 @@ fun todoReminderLabel(activity: ActivityEntity): String = when (activity.reminde
 }
 
 /**
- * RONDE 7 — titik kategori BERDETAK untuk baris Todo Utama: GLOW (halo
- * lembut menyebar mengikuti warna kategori) + denyut skala pola detak
- * jantung lub-dub (dobel denyut lalu jeda panjang), infinite, BUKAN kedip
- * opacity. Bila animator sistem mati (reduce motion / skala animator 0),
- * titik tampil statis ber-glow tanpa animasi.
+ * RONDE 8 — titik kategori EXPANDING GLOW untuk baris Todo Utama:
+ * dot TETAP DIAM; sebuah cincin/halo cahaya warna kategori MENGEMBANG
+ * keluar dari dot lalu MEMUDAR hingga transparan, berulang (efek
+ * ripple/sonar). Menggantikan animasi skala ronde 7 yang dinilai
+ * salah oleh Rama. Bila animator sistem mati (reduce motion / skala
+ * animator 0), dot tampil statis dengan halo lembut tanpa animasi.
  */
 @Composable
-fun HeartbeatCategoryDot(color: Color) {
+fun ExpandingGlowCategoryDot(color: Color) {
     val context = LocalContext.current
     val animatorScale = try {
         android.provider.Settings.Global.getFloat(
@@ -80,35 +82,37 @@ fun HeartbeatCategoryDot(color: Color) {
         )
     } catch (e: Exception) { 1f }
     val reduceMotion = animatorScale == 0f
-    val scale: Float = if (reduceMotion) {
-        1f
+    val progress: Float = if (reduceMotion) {
+        0f
     } else {
-        val transition = rememberInfiniteTransition(label = "heartbeatDot")
+        val transition = rememberInfiniteTransition(label = "expandingGlowDot")
         val animated by transition.animateFloat(
-            initialValue = 1f, targetValue = 1f, label = "heartbeatScale",
+            initialValue = 0f, targetValue = 1f, label = "expandingGlowProgress",
             animationSpec = infiniteRepeatable(
-                animation = keyframes {
-                    durationMillis = 1300
-                    1f at 0
-                    1.38f at 110   // lub
-                    1.08f at 230
-                    1.30f at 350   // dub
-                    1f at 500      // jeda panjang sampai siklus berikutnya
-                    1f at 1300
-                },
+                animation = tween(durationMillis = 2000),
                 repeatMode = RepeatMode.Restart
             )
         )
         animated
     }
-    Box(modifier = Modifier.padding(top = 2.dp).size(20.dp), contentAlignment = Alignment.Center) {
-        // Halo glow (ikut berdenyut, alpha rendah)
+    Box(modifier = Modifier.padding(top = 2.dp).size(30.dp), contentAlignment = Alignment.Center) {
+        if (reduceMotion) {
+            // Halo statis lembut, tanpa gerak.
+            Box(
+                modifier = Modifier.size(18.dp).clip(CircleShape)
+                    .background(color.copy(alpha = 0.28f))
+            )
+        } else {
+            // Cincin mengembang 10 -> 30 dp sambil memudar ke transparan.
+            val ringSize = (10f + progress * 20f).dp
+            Box(
+                modifier = Modifier.size(ringSize).clip(CircleShape)
+                    .border(2.dp, color.copy(alpha = (1f - progress) * 0.6f), CircleShape)
+            )
+        }
+        // Dot diam di tengah — tidak pernah diskala.
         Box(
-            modifier = Modifier.size(18.dp).scale(scale).clip(CircleShape)
-                .background(color.copy(alpha = 0.28f))
-        )
-        Box(
-            modifier = Modifier.size(10.dp).scale(scale).clip(CircleShape).background(color)
+            modifier = Modifier.size(10.dp).clip(CircleShape).background(color)
         )
     }
 }
@@ -127,17 +131,12 @@ fun NextReminderRow(
         verticalAlignment = Alignment.Top
     ) {
         if (activity.isChecklist) {
-            // RONDE 7: ikon Daily Reminder = lingkaran hijau berisi emoji WINK
-            Box(
-                modifier = Modifier.size(22.dp).clip(CircleShape)
-                    .background(Color(0xFF58A97C)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("😉", fontSize = 12.sp)
-            }
+            // RONDE 8: penanda Daily Reminder = emoji SPARKLES TELANJANG —
+            // tanpa lingkaran/chip latar sama sekali (koreksi atas wink ronde 7).
+            Text("✨", fontSize = 16.sp, modifier = Modifier.padding(top = 2.dp))
         } else {
-            // RONDE 7: titik kategori GLOW + BERDETAK (lub-dub)
-            HeartbeatCategoryDot(CategoryColors[activity.category] ?: Color.Gray)
+            // RONDE 8: dot kategori EXPANDING GLOW (dot diam, cincin mengembang).
+            ExpandingGlowCategoryDot(CategoryColors[activity.category] ?: Color.Gray)
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -158,7 +157,7 @@ fun NextReminderRow(
                     // penandaan terakhir bila sudah ada hari ini.
                     val last = activity.lastDailyCompletion(date.toEpochDay())
                     "tiap ${activity.intervalLabel()} • ${activity.category}" +
-                        if (last != null) " • terakhir ditandai ${id.rama.todoplanner.domain.Dates.formatCompletedTime(last)} 😉" else ""
+                        if (last != null) " • terakhir ditandai ${id.rama.todoplanner.domain.Dates.formatCompletedTime(last)} ✨" else ""
                 } else {
                     "${todoReminderLabel(activity)} • ${activity.category}"
                 },

@@ -1077,7 +1077,7 @@ lama tetap kompatibel): **GETAR TETAP DIBEKUKAN** —
   warning deprecation lama.
 - **APK:** `app/build/outputs/apk/debug/app-debug.apk` —
   **17.018.364 byte**, sha256
-  `2c6f674746cbc6bec71a580e0bc5ccaef3e2a4314b5f3ccd66d92130e8855ed3`;
+  `6077bbefad89f59afb1b18b3f8829e8bb454e938b967e4fd20de538ea1f9b74e`;
   salinan staging `../TodoPlanner-debug.apk` ditimpa (hash sama,
   diverifikasi).
 - **GERBANG LOLOS:** `apksigner verify --print-certs` → Signer #1
@@ -1100,3 +1100,125 @@ lama tetap kompatibel): **GETAR TETAP DIBEKUKAN** —
   Catatan desain: karena penandaan Daily Reminder bukan lagi state
   selesai, Daily Reminder tidak lagi dihitung "selesai" pada progres
   harian; ia tampil dengan daftar jam penandaannya sendiri.
+
+## Perbaikan Ronde 8 — Uji HP v1.0.5 (#93, 24 Okt 2026)
+
+Catatan proses (jujur): seperti ronde 6–7, implementasi ronde 8 sudah
+diterapkan penulis paralel sebelum sesi koordinator sempat menulis kode.
+Peran koordinator di ronde ini = **audit baris-per-baris terhadap
+instruksi #93 + 3 koreksi auditor + clean build pembuktian**. Hasil
+audit: ke-6 item lengkap; koreksi auditor: (a) deskripsi timeline dibuat
+miring (italic) agar persis gaya PDF; (b) limit daftar mendatang Beranda
+dinaikkan 3 → 10 lalu dipangkas per jenis — limit 3 campuran bisa
+mendesak Daily Reminder keluar dari kartu Ritual (atau sebaliknya);
+(c) bab README ini (penulis paralel tidak menulisnya).
+
+### 1. Penanda selesai Daily Reminder: WINK → SPARKLES ✨, tanpa buletan
+Koreksi atas ronde 7: penanda selesai Daily Reminder kini emoji
+**SPARKLES ✨ telanjang** — tanpa lingkaran/chip/border latar di semua
+tempat ia tampil: baris Schedule Warning (`ReminderRows`), baris
+`ActivityRow` (Kegiatan Hari Ini), `CompactRow` (Harian), judul section
+Template Harian, header + penjelasan Form, header section layar
+Reminder, judul notifikasi (`ReminderScheduler`), dan label Detail.
+Area ketuk 24 dp dipertahankan (ketuk ✨ = catat penandaan baru);
+bila belum pernah ditandai hari itu, area ketuk tampil kosong.
+Nol emoji 😉 tersisa di seluruh `app/src`. Penanda Todo Utama
+(lingkaran centang) tidak berubah.
+
+### 2. Dot Todo Utama: skala berdetak DIGANTI expanding glow
+Animasi skala lub-dub ronde 7 dinilai salah oleh Rama dan **dihapus
+total** (termasuk import `scale`/`keyframes`). Pengganti
+(`ExpandingGlowCategoryDot` di `ReminderRows`): dot warna kategori
+**tetap diam**; sebuah cincin/halo cahaya warna kategori **mengembang
+keluar dari dot (10 → 30 dp) sambil memudar hingga transparan**,
+berulang tiap 2 detik — efek ini bernama **ripple** (atau **sonar**).
+Bila animator sistem mati (reduce motion), dot tampil statis dengan
+halo lembut tanpa gerak.
+
+### 3. Timeline Template Harian: deskripsi tampil di bawah judul
+Baris Todo Utama di timeline Harian kini menampilkan `note`
+(deskripsi/catatan) di bawah judul bila tidak kosong — gaya PDF/Detail:
+abu-abu, miring (italic), wrap penuh, tanpa batas baris. Bila kosong,
+tampilan seperti sebelumnya.
+
+### 4. BUG PRIORITAS: Daily Reminder bunyi TANPA notifikasi — akar + fix
+**Akar pastinya (terbukti dari urutan kode, bukan tebakan):**
+`ReminderReceiver.ring()` memasang notifikasi dengan ID =
+`checklistCode(id)`, lalu cabang Daily Reminder langsung memanggil
+`ReminderScheduler.schedule()` untuk tick berikutnya — dan `schedule()`
+selalu membuka dengan `cancelAll()`, yang menjalankan
+`nm.cancel(checklistCode)`. Notifikasi yang **baru saja dipasang
+langsung dihapus**, sementara service/pemutar terus berbunyi 20 detik:
+tanpa notifikasi, tanpa aksi "Matikan Bunyi", tanpa identitas kegiatan
+— persis keluhan Rama. Todo Utama tidak kena karena cabangnya tidak
+memanggil `schedule()` setelah `ring()`. Lapisan kedua: bila
+`startForeground` service ditolak OEM (kasus MIUI), jalur cadangan
+lama memutar bunyi langsung tanpa memasang notifikasi pengganti.
+
+**Fix dua lapis (tanpa menyentuh file getar):**
+- `schedule(..., preserveNotification = true)` → `cancelAll(...,
+  clearNotifications = false)`: rantai interval Daily Reminder di
+  receiver (cabang `isChecklist` dan cabang `KIND_CHECKLIST`) tidak
+  lagi menghapus notifikasi bunyi yang sedang berjalan. Jalur lain
+  (simpan/hapus/tandai/toggle) memakai default `false` sehingga
+  notifikasi basi tetap dibersihkan seperti sebelumnya.
+- `ReminderSoundService`: bila `startForeground` gagal, service kini
+  memasang notifikasi yang SAMA lewat `NotificationManager` (judul
+  kegiatan + aksi Berhentikan + ketuk buka Detail) sebelum memutar.
+Audit semua jalur bunyi: todo early/at-start (notifikasi bertahan
+karena tanpa schedule susulan), rantai interval Daily Reminder
+(dua lapis di atas), dan alarm tes (jalur `ring()` yang sama).
+Sementara menunggu update: membuka aplikasi menghentikan bunyi
+(`MainActivity` memanggil `StopSoundReceiver.requestStop`).
+
+### 5. Card Beranda "Kegiatan Berikutnya" DIBELAH + kartu "Ritual" 🪄
+- Kartu **"Kegiatan Berikutnya"** kini HANYA Todo Utama
+  (`todays` disaring `!isChecklist`).
+- Kartu BARU **"🪄 Ritual"** tepat di bawahnya, HANYA Daily Reminder
+  (baris `NextReminderRow` yang sama: ✨ + pill + interval + bunyi
+  berikutnya), dengan state kosong "Belum ada Daily Reminder
+  terjadwal".
+- Kartu Beranda "Schedule Warning" ikut dipecah: kini HANYA Todo
+  Utama (Daily Reminder sudah pindah ke Ritual). Layar Reminder
+  (`OtherScreens`) sudah terpisah section sejak ronde 6, jadi tidak
+  diubah strukturnya — hanya emoji penandanya dikoreksi ke ✨.
+- "Kegiatan Hari Ini" sengaja tetap campuran: itu daftar lengkap
+  seharian (bukan "berikutnya"), dan barisnya sudah dibedakan jelas
+  (✨ + pill Daily Reminder vs lingkaran centang todo).
+
+### 6. Garis aksen Todo Utama di card Kegiatan Berikutnya: neon shimmer sweep
+`ShimmerAccentBar` (di `HomeScreen`, dipakai `UpcomingItem`): garis
+warna kategori diam sebagai dasar; sebuah segmen pendek bergradasi
+**transparan–perak–transparan** meluncur dari atas ke bawah garis
+(siklus 2,2 detik, berulang) — efek ini bernama **shimmer** (disebut
+juga **shine sweep**). Bukan kedip opacity: warna dasar tidak pernah
+berubah, hanya sapuan cahaya perak yang lewat. Bila animator sistem
+mati (reduce motion), garis tampil statis tanpa sapuan.
+
+### Hasil build ronde 8
+- **Status: BUILD SUCCESSFUL** (Gradle 8.7 offline, `clean
+  assembleDebug`, keystore.properties ADA → signing permanen).
+- **APK:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **17.034.748 byte**, sha256
+  `2f2291d62841385f28c292ead9bfdcee58317c5726d9a22f694622481eab01e0`;
+  salinan staging `../TodoPlanner-debug.apk` ditimpa (hash sama,
+  diverifikasi).
+- **GERBANG LOLOS:** `apksigner verify --print-certs` → Signer #1
+  SHA-256 digest =
+  `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+  — SAMA PERSIS dengan keystore permanen → update timpa di atas v1.0.5
+  aman.
+- Terverifikasi: package `id.rama.todoplanner` versionCode **7** /
+  versionName **1.0.6**, minSdk 26, targetSdk 34; permission tetap
+  **TANPA INTERNET**; zip 157 entri, testzip bersih; string dex
+  memuat `Ritual`, `ExpandingGlowCategoryDot`, `ShimmerAccentBar`,
+  `preserveNotification`; `ReminderSoundPlayer.kt` identik
+  byte-per-byte dengan v1.0.3 (sha256
+  `9441d784fde596fa8f1a3966a391aa76e01efe1dbe41b271f16de31c2138bc7e`)
+  — getar tetap dibekukan. DB tetap versi 4 (ronde 8 tidak menambah
+  kolom, jadi tanpa migrasi; data v1.0.5 utuh saat update timpa).
+- **Catatan jujur:** verifikasi di VM sebatas compile + signature +
+  badging + isi dex. Perilaku runtime ronde 8 (✨ tanpa buletan,
+  expanding glow, shimmer perak, deskripsi timeline, kartu Ritual,
+  notifikasi bunyi Daily Reminder yang kini bertahan + bisa
+  diberhentikan) terbukti lewat uji HP Rama berikutnya.

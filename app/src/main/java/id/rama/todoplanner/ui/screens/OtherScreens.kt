@@ -233,7 +233,7 @@ fun ReminderScreen(vm: AppViewModel) {
         // ===== RONDE 6: Section Daily Reminder (sub-kartu terpisah) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("Mendatang — 😉 Daily Reminder", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                Text("Mendatang — ✨ Daily Reminder", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
                 if (upcomingChecklists.isEmpty()) {
                     Text(
                         "Tidak ada Daily Reminder terjadwal. Daily Reminder ber-interval akan muncul di sini.",
