@@ -116,6 +116,49 @@ object ReminderSoundPlayer {
         }
     }
 
+    /**
+     * ADDENDUM RONDE 5 (laporan Rama 08.11: getar tetap mati walau diagnostik
+     * ronde 4 bilang "OK") — TES GETAR LANGSUNG untuk bisect:
+     * getar one-shot 2 detik memakai API yang BERBEDA dari jalur reminder
+     * (createOneShot + DEFAULT_AMPLITUDE, dipanggil dari proses UI saat tombol
+     * ditekan — bukan dari foreground service/alarm).
+     *  - Tombol ini bergetar, reminder tidak -> masalah di jalur service/waveform.
+     *  - Tombol ini juga TIDAK bergetar -> gerbang level device/mode HP
+     *    (diagnostik di bawah mencatat ringerMode & filter DND saat itu juga).
+     */
+    @Synchronized
+    fun vibrateDirectTest(context: Context) {
+        stopInternal()
+        val appCtx = context.applicationContext
+        val v = obtainVibrator(appCtx)
+        vibrator = v
+        val hasVibrator = try { v?.hasVibrator() == true } catch (e: Exception) { false }
+        if (v == null) {
+            saveVibrationDiagnostic(appCtx, hasVibrator, "TesLangsung GAGAL: Vibrator service null", "UI langsung")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                v.vibrate(
+                    VibrationEffect.createOneShot(
+                        2_000L, VibrationEffect.DEFAULT_AMPLITUDE
+                    )
+                )
+                saveVibrationDiagnostic(appCtx, hasVibrator, "TesLangsung OK: one-shot 2000ms DEFAULT_AMPLITUDE", "UI langsung")
+                return
+            } catch (e: Exception) {
+                saveVibrationDiagnostic(appCtx, hasVibrator, "TesLangsung lapisan one-shot gagal: ${e.message ?: e.javaClass.simpleName}", "UI langsung")
+            }
+        }
+        try {
+            @Suppress("DEPRECATION")
+            v.vibrate(2_000L)
+            saveVibrationDiagnostic(appCtx, hasVibrator, "TesLangsung OK: vibrate(ms) API lama", "UI langsung")
+        } catch (e: Exception) {
+            saveVibrationDiagnostic(appCtx, hasVibrator, "TesLangsung GAGAL TOTAL: ${e.message ?: e.javaClass.simpleName}", "UI langsung")
+        }
+    }
+
     /** Getar saja (dipakai juga untuk mode nada Senyap). */
     @Synchronized
     fun vibrateOnly(context: Context) {
@@ -199,6 +242,22 @@ object ReminderSoundPlayer {
             } catch (e: Exception) {
                 saveVibrationDiagnostic(context, hasVibrator, "Lapisan A gagal: ${e.message ?: e.javaClass.simpleName}")
             }
+            // (a2) ADDENDUM RONDE 5 — cadangan permukaan API lain: one-shot
+            // DEFAULT_AMPLITUDE (hanya tercapai bila lapisan A melempar).
+            try {
+                v.vibrate(VibrationEffect.createOneShot(1_500L, VibrationEffect.DEFAULT_AMPLITUDE))
+                saveVibrationDiagnostic(context, hasVibrator, "OK (cadangan A2): one-shot DEFAULT_AMPLITUDE")
+                // Lanjutkan loop getar dengan pola lama agar getar tidak berhenti di 1,5 dtk.
+                handler.postDelayed({
+                    try {
+                        @Suppress("DEPRECATION")
+                        v.vibrate(VIBRATION_PATTERN, 0)
+                    } catch (e: Exception) { /* diagnostik utama sudah tersimpan */ }
+                }, 1_600L)
+                return
+            } catch (e: Exception) {
+                saveVibrationDiagnostic(context, hasVibrator, "Lapisan A2 gagal: ${e.message ?: e.javaClass.simpleName}")
+            }
             // (b) Cadangan: perilaku lama (dengan atribut alarm).
             try {
                 val attrs = AudioAttributes.Builder()
@@ -242,13 +301,48 @@ object ReminderSoundPlayer {
         try { obtainVibrator(context)?.hasVibrator() == true } catch (e: Exception) { false }
 
     /** Simpan hasil upaya getar terakhir (BUKTI untuk uji berikutnya). Tidak pernah melempar. */
-    private fun saveVibrationDiagnostic(context: Context, hasVibrator: Boolean, result: String) {
+    private fun saveVibrationDiagnostic(
+        context: Context, hasVibrator: Boolean, result: String, path: String = "reminder/service"
+    ) {
         try {
             val jam = java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("d MMM HH.mm"))
             AppPrefs(context).vibrationDiagnostic =
-                "$result • hasVibrator=$hasVibrator • $jam"
+                "$result • hasVibrator=$hasVibrator • ${deviceVibrationContext(context)} • jalur=$path • $jam"
         } catch (e: Exception) { /* diagnostik tidak boleh menjatuhkan bunyi */ }
+    }
+
+    /**
+     * ADDENDUM RONDE 5 — konteks device yang bisa menggerbangi getar fisik:
+     * mode dering HP, filter Jangan Ganggu (DND), dan dukungan kontrol
+     * amplitudo. Bila API bilang OK tetapi motor tidak bergerak, baris inilah
+     * buktinya (mis. ringerMode=SENYAP di EMUI bisa menekan getar app).
+     */
+    private fun deviceVibrationContext(context: Context): String = try {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        val ringer = when (am.ringerMode) {
+            android.media.AudioManager.RINGER_MODE_SILENT -> "SENYAP"
+            android.media.AudioManager.RINGER_MODE_VIBRATE -> "GETAR"
+            android.media.AudioManager.RINGER_MODE_NORMAL -> "NORMAL"
+            else -> "?"
+        }
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val dnd = when (nm.currentInterruptionFilter) {
+            android.app.NotificationManager.INTERRUPTION_FILTER_NONE -> "DND-TOTAL"
+            android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY -> "DND-PRIORITAS"
+            android.app.NotificationManager.INTERRUPTION_FILTER_ALARMS -> "DND-ALARM-SAJA"
+            else -> "DND-MATI"
+        }
+        val amp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try { obtainVibrator(context)?.hasAmplitudeControl() == true } catch (e: Exception) { false }
+        } else false
+        // ADDENDUM 08.22: identitas device agar diagnostik tidak lagi
+        // menebak OEM (device uji saat ini Xiaomi Redmi / MIUI-HyperOS;
+        // semua jalur aplikasi ini OEM-agnostik, standar Android berlapis).
+        val device = "${Build.MANUFACTURER} ${Build.MODEL} • SDK ${Build.VERSION.SDK_INT}"
+        "ringer=$ringer • $dnd • amplitudeControl=$amp • $device"
+    } catch (e: Exception) {
+        "konteks device tidak terbaca"
     }
 
     /**

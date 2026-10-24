@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import id.rama.todoplanner.MainActivity
 import id.rama.todoplanner.R
 import id.rama.todoplanner.data.AppPrefs
+import kotlinx.coroutines.launch
 
 /**
  * Menerima alarm lalu (1) MEMBUNYIKAN nada + getar DARI KODE dan
@@ -52,6 +53,24 @@ class ReminderReceiver : BroadcastReceiver() {
 
         startSound(context, notifId, title, text, channelId, toneUri, activityId, occEpochDay)
         postNotification(context, notifId, title, text, channelId, activityId, occEpochDay)
+
+        // RONDE 5 — alarm BERANTAI checklist: begitu satu tick berbunyi,
+        // jadwalkan tick berikutnya. Bila checklist sudah dicentang selesai
+        // untuk hari itu (atau dihapus), penjadwalan ulang tidak menghasilkan
+        // alarm hari itu lagi — rantai berhenti permanen untuk hari itu.
+        if (intent.getStringExtra(EXTRA_KIND) == ReminderScheduler.KIND_CHECKLIST && activityId > 0L) {
+            val pending = goAsync()
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    val app = context.applicationContext as? id.rama.todoplanner.TodoApplication
+                    val act = app?.repository?.getActivity(activityId)
+                    if (app != null && act != null) {
+                        ReminderScheduler.schedule(app, act, app.prefs)
+                    }
+                } catch (e: Exception) { /* rantai berhenti; rescheduleAll saat app dibuka memulihkan */ }
+                finally { pending.finish() }
+            }
+        }
     }
 
     /** Jalur utama: foreground service. Jalur cadangan: putar langsung di sini. */

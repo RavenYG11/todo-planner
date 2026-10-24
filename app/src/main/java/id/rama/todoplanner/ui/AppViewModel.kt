@@ -156,14 +156,28 @@ class AppViewModel(private val app: TodoApplication) : AndroidViewModel(app) {
     fun activeReminderChannelId(): String =
         id.rama.todoplanner.reminder.ReminderChannels.ensureChannel(app, prefs.globalRingtoneUri)
 
+    /**
+     * RONDE 5: tandai selesai menyimpan TIMESTAMP selesai per occurrence
+     * (lihat ActivityEntity.withDoneOn) DAN menjadwalkan ulang alarm dari
+     * keadaan baru — occurrence yang selesai alarmnya ter-cancel (penjadwal
+     * melewati occurrence selesai), "Batalkan Selesai" menjadwalkan ulang
+     * dari nol (restart penuh). Untuk checklist, penjadwalan ulang inilah
+     * yang menghentikan / menghidupkan lagi rantai interval hari itu.
+     */
     fun toggleDone(activity: ActivityEntity, epochDay: Long, done: Boolean) {
-        viewModelScope.launch { repo.saveActivity(activity.withDoneOn(epochDay, done)) }
+        viewModelScope.launch {
+            val updated = activity.withDoneOn(epochDay, done)
+            repo.saveActivity(updated)
+            ReminderScheduler.schedule(app, updated, prefs)
+        }
     }
 
     /** Varian dengan callback SETELAH simpan berhasil — dipakai Detail (ronde 3: langsung kembali ke Beranda). */
     fun toggleDone(activity: ActivityEntity, epochDay: Long, done: Boolean, onComplete: () -> Unit) {
         viewModelScope.launch {
-            repo.saveActivity(activity.withDoneOn(epochDay, done))
+            val updated = activity.withDoneOn(epochDay, done)
+            repo.saveActivity(updated)
+            ReminderScheduler.schedule(app, updated, prefs)
             onComplete()
         }
     }
