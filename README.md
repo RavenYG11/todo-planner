@@ -727,3 +727,107 @@ cadangan OS. Perbaikan:
   getar, baca baris "Diagnostik getar:" di layar Reminder setelah Tes
   Reminder agar uji berbasis bukti.
 
+## Perbaikan Ronde 5 — Uji HP v1.0.2 (#90, 24 Okt 2026)
+
+LULUS ronde 4 & TIDAK diubah: PDF deskripsi tampil, diagnostik getar,
+Reminder Terdekat 1 entri/kegiatan, suara/getar/layar-bangun jalur ronde 4,
+signing permanen. Ronde ini (versionCode **4** / versionName **1.0.3**):
+
+### 1. Checklist dibedakan dari Todo Utama
+- Definisi: **Checklist = tanpa jam mulai/selesai** (`startMinutes == null`);
+  Todo Utama = ada jam. Form: untuk checklist, opsi reminder "sebelum mulai"
+  DIGANTI pilihan **interval pengulangan dalam 1 hari** — nilai + satuan
+  (Detik/Menit/Jam; preset 30 Detik…2 Jam + input angka numerik bebas),
+  disimpan sebagai field baru `intervalValue` + `intervalUnit`. Pola hari
+  pengulangan (Tidak/Harian/Mingguan/Bulanan/Tahunan) dipertahankan.
+- Penjadwalan checklist = **alarm berantai**: satu alarm aktif; pada hari
+  kemunculannya berbunyi berulang tiap interval dalam jendela **06.00–22.00**;
+  setelah tiap bunyi, `ReminderReceiver` menjadwalkan tick berikutnya;
+  **berhenti permanen untuk hari itu** begitu checklist dicentang selesai
+  (penjadwalan ulang dari keadaan selesai tidak menghasilkan tick hari itu).
+  Bunyi/getar/layar bangun memakai jalur ronde 4 yang sama (service + player).
+- Reminder Terdekat (Beranda & layar Reminder) tetap SATU kartu/daftar dan
+  1 entri per kegiatan, tetapi barisnya dibedakan (komponen bersama
+  `NextReminderRow`): todo utama = titik warna kategori + "Hari ini HH.mm —
+  Judul" + "15 mnt sebelum • Kategori"; checklist = ikon ✓ + pill
+  "Checklist" + "tiap {interval} • Kategori". Urut waktu trigger berikutnya.
+
+### 2. Todo utama selesai hilang dari Reminder Terdekat
+- `nextReminderEntry` (domain) dan `nextAlarmPair` (penjadwal) kini MELEWATI
+  occurrence yang sudah selesai: occurrence selesai tidak tampil di Reminder
+  Terdekat dan alarmnya tidak dijadwalkan lagi; `toggleDone` selalu
+  menjadwalkan ulang dari keadaan terbaru (selesai = alarm occurrence itu
+  batal; **Batalkan Selesai = restart penuh**: timestamp dihapus, alarm
+  dijadwalkan ulang, entri muncul lagi).
+- Timestamp selesai per occurrence disimpan di kolom baru `doneTimestamps`
+  ("epochDay:epochMillis,...", pasangan `doneDates`). Label
+  **"Selesai • HH:mm"** (24 jam tanpa detik) tampil di baris kegiatan
+  (Harian/Checklist/Detail/Kalender lewat `ActivityRow`/`CompactRow`);
+  data lama tanpa timestamp tampil "Selesai" saja.
+
+### 3. PDF — desain per periode dibedakan (struktur bersama `domain/PdfStructure.kt`)
+- Checklist **tidak dimasukkan ke PDF sama sekali** — hanya Todo Utama
+  (disaring di Preview maupun di dalam `PdfExporter`).
+- **Penomoran urut per kelompok 1 hari** (1., 2., 3., … mulai ulang tiap
+  hari) di semua periode; deskripsi ronde 4, ringkasan, header art, dan
+  footer dipertahankan; paginasi kini berbasis blok agar sub-header tidak
+  yatim di kaki halaman.
+- **HARIAN:** sub-header hari + daftar bernomor + status selesai
+  "Diselesaikan HH:mm" dari timestamp (tanpa timestamp: "Selesai").
+- **MINGGUAN:** kelompok per hari — sub-header hari pita tanggal biru +
+  ringkasan kecil ("N kegiatan • M selesai").
+- **BULANAN:** sub-header minggu (pita amber) lalu sub-header hari.
+- **TAHUNAN:** sub-header bertingkat bulan (pita gradasi lavender→biru) →
+  minggu → hari. Preview di aplikasi mengikuti struktur yang sama persis.
+
+### 4. Time picker baru (`ui/components/SlideTimePicker.kt`)
+Dial 360° Material diganti **kolom slide vertikal** jam (00–23) & menit
+(00–59): geser ↕ berubah langkah demi langkah dengan snap per langkah dan
+clamp di rentang; ketuk nilai tetangga = ±1; **ketuk nilai yang sedang aktif
+sekali lagi = mode ketik** dengan keyboard numerik saja + validasi rentang
+& clamp. Berlaku untuk Jam Mulai & Jam Selesai; tombol Batal/Pilih tetap.
+
+### 5. Menu Reminder disamakan mockup
+Layar Reminder kini: kartu **"Mendatang"** gaya mockup (titik kategori,
+judul, sublabel; baris checklist dibedakan sesuai item 1) + kartu
+**"⚙️ Pengaturan Reminder"** dengan badge **AKTIF** untuk Suara & Getar
+(dan status Izin Notifikasi), baris nada global + tombol Ganti. Fitur nyata
+dipertahankan di dalam struktur itu: Izin Notifikasi, Tes Reminder 10
+Detik, Tes Getar Langsung, Diagnostik getar, Buka Pengaturan Notifikasi,
+pemilih nada global.
+
+### Addendum getar (laporan 08.11 + koreksi device 08.22)
+- Device uji Rama = **Xiaomi Redmi (MIUI/HyperOS)**, BUKAN Huawei — catatan
+  "EMUI" ronde 1–4 merujuk asumsi awal yang salah. Semua jalur aplikasi ini
+  **OEM-agnostik** (API standar Android berlapis), tanpa hack per merek.
+- **(A) Tombol "Tes Getar Langsung (2 detik)"** (di blok Tes Reminder &
+  Pengaturan): one-shot `DEFAULT_AMPLITUDE` dari proses UI — alat bisect:
+  tombol bergetar tapi reminder tidak ⇒ jalur service/waveform; tombol juga
+  tidak bergetar ⇒ gerbang level device/mode.
+- **(B) Diagnostik diperluas:** hasil upaya + `ringerMode`, filter DND
+  (`currentInterruptionFilter`), `hasAmplitudeControl`, **MANUFACTURER /
+  MODEL / SDK**, dan jalur penembak (UI langsung vs reminder/service).
+- **(C) Fallback API berjenjang** ditambah lapisan one-shot
+  `DEFAULT_AMPLITUDE` + pola legacy di antara waveform utama dan jalur lama.
+
+### Migrasi database (NON-DESTRUKTIF)
+- Room **versi 1 → 2** dengan `Migration(1,2)` eksplisit: `ALTER TABLE
+  activities ADD COLUMN intervalValue INTEGER`, `ADD COLUMN intervalUnit
+  TEXT`, `ADD COLUMN doneTimestamps TEXT NOT NULL DEFAULT ''`. Tanpa
+  `fallbackToDestructiveMigration` — data lama utuh saat update timpa.
+- Backup JSON: field baru diekspor; file backup LAMA tetap bisa diimpor
+  (field yang tidak ada dibaca sebagai null/"").
+
+### Hasil build ronde 5
+- **Status: BUILD SUCCESSFUL** (Gradle 8.7 offline, folder proyek asli di
+  VM ini, `keystore.properties` ADA → signing permanen) — build bersih
+  final (`clean assembleDebug`).
+- **APK:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **17.001.980 byte (±16,2 MB)**, sha256 `411a925a09133aaf6c60dffb286a0a534b85afa2748153f4894ca2d5f4410439`;
+  salinan staging `../TodoPlanner-debug.apk` ditimpa (hash sama).
+- **GERBANG LOLOS:** `apksigner verify --print-certs` → Signer #1 SHA-256
+  digest = `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+  — SAMA PERSIS dengan keystore permanen → update timpa di atas v1.0.2.
+- **Catatan jujur:** verifikasi di VM sebatas compile + signature + badging
+  + isi dex. Perilaku runtime (rantai interval checklist, picker slide,
+  PDF per periode, getar di Xiaomi Redmi) terbukti lewat uji HP berikutnya.

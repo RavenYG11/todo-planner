@@ -119,7 +119,17 @@ private fun CompactRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick
                 textDecoration = if (occ.done) TextDecoration.LineThrough else null
             )
             Spacer(Modifier.height(3.dp))
-            CategoryPill(occ.activity.category)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CategoryPill(occ.activity.category)
+                // RONDE 5: "Selesai • HH:mm" dari timestamp per occurrence.
+                if (occ.done) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        Dates.completedLabel(occ.completedAtMillis),
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep
+                    )
+                }
+            }
         }
     }
 }
@@ -211,7 +221,16 @@ fun DailyScreen(
                                             textDecoration = if (occ.done) TextDecoration.LineThrough else null
                                         )
                                         Spacer(Modifier.height(3.dp))
-                                        CategoryPill(occ.activity.category)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CategoryPill(occ.activity.category)
+                                            if (occ.done) {
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    Dates.completedLabel(occ.completedAtMillis),
+                                                    fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
