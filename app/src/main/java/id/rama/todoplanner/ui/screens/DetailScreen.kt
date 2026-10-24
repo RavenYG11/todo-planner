@@ -31,6 +31,7 @@ import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.reminder.ToneResolver
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.components.CategoryPill
+import id.rama.todoplanner.ui.components.activityColor
 import id.rama.todoplanner.ui.components.GradientButton
 import id.rama.todoplanner.ui.components.SoftCard
 import id.rama.todoplanner.ui.components.ringtoneTitle
@@ -87,7 +88,8 @@ fun DetailScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     Text(activity.displayTitle, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink, modifier = Modifier.weight(1f))
-                    CategoryPill(activity.category)
+                    // RONDE 9: pill kategori Detail mengikuti warna custom user.
+                    CategoryPill(activity.category, activityColor(activity))
                 }
                 Spacer(Modifier.height(8.dp))
                 DetailLine("Tanggal", date.format(Dates.fullDate))
@@ -120,7 +122,17 @@ fun DetailScreen(
                         else -> ringtoneTitle(context, ToneResolver.effectiveToneUri(activity.ringtoneUri, profile.globalToneUri)) + " (global)"
                     }
                 )
-                DetailLine("Prioritas", activity.priority)
+                // RONDE 9 (amendemen 5): nilai prioritas memakai warna
+                // prioritas TETAP (Rendah hijau / Sedang biru / Tinggi merah),
+                // terpisah dari warna custom kategori.
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                    Text("Prioritas", modifier = Modifier.weight(1f), color = Color(0xFF5A6973))
+                    Text(
+                        activity.priority, modifier = Modifier.weight(2f),
+                        color = id.rama.todoplanner.ui.components.priorityColor(activity.priority),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 if (activity.isChecklist) {
                     // RONDE 7 — status Daily Reminder = daftar jam penandaan
                     // hari itu (bukan state selesai) + bunyi berikutnya.

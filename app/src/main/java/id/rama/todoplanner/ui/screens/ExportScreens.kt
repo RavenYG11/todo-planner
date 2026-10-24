@@ -321,7 +321,7 @@ fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, cat
                                         }
                                     }
                                     Text(occ.date.format(DateTimeFormatter.ofPattern("d MMM", idLocale)), fontSize = 12.sp, modifier = Modifier.weight(0.55f))
-                                    Box(modifier = Modifier.weight(0.75f)) { CategoryPill(occ.activity.category) }
+                                    Box(modifier = Modifier.weight(0.75f)) { CategoryPill(occ.activity.category, id.rama.todoplanner.ui.components.activityColor(occ.activity)) }
                                     Text(
                                         when {
                                             occ.done && period == "Harian" ->

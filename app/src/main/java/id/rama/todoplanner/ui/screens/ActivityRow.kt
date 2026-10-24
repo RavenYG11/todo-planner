@@ -26,8 +26,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.domain.Occurrence
-import id.rama.todoplanner.ui.components.CategoryColors
 import id.rama.todoplanner.ui.components.SoftCard
+import id.rama.todoplanner.ui.components.activityColor
+import id.rama.todoplanner.ui.components.priorityColor
 import id.rama.todoplanner.ui.theme.GreenDeep
 
 /**
@@ -37,7 +38,8 @@ import id.rama.todoplanner.ui.theme.GreenDeep
  */
 @Composable
 fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () -> Unit) {
-    val accent = CategoryColors[occ.activity.category] ?: Color.Gray
+    // RONDE 9: aksen kategori mengikuti warna custom user (activityColor).
+    val accent = activityColor(occ.activity)
     // RONDE 8 — Daily Reminder: BUKAN state selesai. Penanda = emoji SPARKLES (✨, telanjang,
     // tanpa lingkaran latar) bila hari ini sudah pernah ditandai; menggantikan WINK ronde 7.
     // bila hari ini sudah pernah ditandai; judul TIDAK dicoret; daftar jam
@@ -114,10 +116,23 @@ fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () ->
                         )
                     }
                 } else {
+                    // RONDE 9 (amendemen 5): kata prioritas berwarna tetap
+                    // (hijau/biru/merah), bukan warna custom kategori.
+                    val subline = androidx.compose.ui.text.buildAnnotatedString {
+                        append("$timeText • ${occ.activity.category} • ")
+                        pushStyle(
+                            androidx.compose.ui.text.SpanStyle(
+                                color = priorityColor(occ.activity.priority),
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                        append("Prioritas ${occ.activity.priority}")
+                        pop()
+                        if (occ.done) append(" • " + Dates.completedLabel(occ.completedAtMillis))
+                    }
                     Text(
                         // RONDE 5: occurrence selesai menampilkan jam selesainya
-                        text = "$timeText • ${occ.activity.category} • Prioritas ${occ.activity.priority}" +
-                            if (occ.done) " • " + Dates.completedLabel(occ.completedAtMillis) else "",
+                        text = subline,
                         fontSize = 12.sp,
                         color = if (occ.done) Color(0xFF22714F) else Color(0xFF70858E)
                     )

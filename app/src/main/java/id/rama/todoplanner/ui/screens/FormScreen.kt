@@ -42,12 +42,14 @@ import id.rama.todoplanner.domain.Dates
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.components.Categories
 import id.rama.todoplanner.ui.components.CategoryColors
+import id.rama.todoplanner.ui.components.ColorPickerSection
 import id.rama.todoplanner.ui.components.DawnHeader
+import id.rama.todoplanner.ui.components.categoryHex
+import id.rama.todoplanner.ui.components.priorityColor
 import id.rama.todoplanner.ui.components.GradientButton
 import id.rama.todoplanner.ui.components.PastelChip
 import id.rama.todoplanner.ui.components.ToneField
 import id.rama.todoplanner.ui.theme.AmberSoft
-import id.rama.todoplanner.ui.theme.Coral
 import id.rama.todoplanner.ui.theme.Lavender
 import id.rama.todoplanner.ui.theme.SkyBlue
 import java.time.Instant
@@ -144,6 +146,20 @@ fun FormScreen(
     var toneName by remember(editId) { mutableStateOf(existing?.ringtoneName ?: "") }
     var priority by remember(editId) { mutableStateOf(existing?.priority ?: "Sedang") }
     var category by remember(editId) { mutableStateOf(existing?.category ?: "Kerja") }
+    // RONDE 9 — warna pilihan user per kegiatan (null = belum dipilih ->
+    // ikut warna kategori lama). [colorCustom] membedakan "user sengaja
+    // memilih warna ini" vs "warna ini sekadar default kategori": ganti
+    // kategori HANYA menggeser warna bila belum custom, supaya warna
+    // custom tidak tertimpa diam-diam saat kategori diubah.
+    var colorHex by remember(editId) {
+        mutableStateOf(existing?.colorHex ?: categoryHex(existing?.category ?: "Kerja"))
+    }
+    var colorCustom by remember(editId) {
+        mutableStateOf(
+            existing?.colorHex != null &&
+                !existing.colorHex.equals(categoryHex(existing.category), ignoreCase = true)
+        )
+    }
     var note by remember(editId) { mutableStateOf(existing?.note ?: "") }
     // RONDE 6 — logo emoji kegiatan ("" = tanpa logo).
     var iconEmoji by remember(editId) { mutableStateOf(existing?.iconEmoji ?: "") }
@@ -165,9 +181,9 @@ fun FormScreen(
         "custom" -> toneUri
         else -> null
     }
-    val dirty = remember(title, date, startMin, endMin, template, repeat, reminder, intervalValueText, intervalUnit, savedToneUri, priority, category, note, iconEmoji, existing) {
+    val dirty = remember(title, date, startMin, endMin, template, repeat, reminder, intervalValueText, intervalUnit, savedToneUri, priority, category, note, iconEmoji, colorHex, existing) {
         if (existing == null) {
-            title.isNotBlank() || note.isNotBlank() || iconEmoji.isNotBlank()
+            title.isNotBlank() || note.isNotBlank() || iconEmoji.isNotBlank() || colorCustom
         } else {
             title != existing.title || date.toEpochDay() != existing.dateEpochDay ||
                 startMin != existing.startMinutes || endMin != existing.endMinutes ||
@@ -176,7 +192,10 @@ fun FormScreen(
                 intervalValueText != (existing.intervalValue?.toString() ?: "5") ||
                 intervalUnit != (existing.intervalUnit ?: "MENIT") ||
                 iconEmoji != (existing.iconEmoji) ||
-                priority != existing.priority || category != existing.category || note != existing.note
+                priority != existing.priority || category != existing.category || note != existing.note ||
+                // RONDE 9: warna efektif yang akan disimpan (custom, atau
+                // kategori bila tidak custom) dibandingkan dengan tersimpan.
+                (if (colorCustom) colorHex else null) != existing.colorHex
         }
     }
 
@@ -328,9 +347,33 @@ fun FormScreen(
             }
         }
         Text("Prioritas", fontWeight = FontWeight.Bold)
-        ChipRow(PRIORITY_OPTIONS, priority, { Coral }) { priority = it }
+        // RONDE 9 (amendemen 5): chip prioritas memakai warna prioritas
+        // TETAP (Rendah hijau / Sedang biru / Tinggi merah) — terpisah
+        // dari warna custom kategori di bawah, tidak pernah mengikutinya.
+        ChipRow(PRIORITY_OPTIONS, priority, { opt -> priorityColor(opt) }) { priority = it }
         Text("Kategori", fontWeight = FontWeight.Bold)
-        ChipRow(Categories, category, { opt -> CategoryColors[opt] ?: SkyBlue }) { category = it }
+        ChipRow(Categories, category, { opt -> CategoryColors[opt] ?: SkyBlue }) {
+            category = it
+            // RONDE 9: ganti kategori menggeser warna default HANYA bila
+            // user belum memilih warna custom (lihat colorCustom di atas).
+            if (!colorCustom) colorHex = categoryHex(it)
+        }
+        // RONDE 9 — section "Pilih Warna" (tepat di bawah Kategori):
+        // preset + palette manual; warna ini dipakai untuk WARNA KATEGORI
+        // + LABEL KATEGORI (pill) di card-card Todo Utama. Daily Reminder
+        // tidak wajib mengikutinya. "Ikuti warna kategori" mengembalikan
+        // ke default (disimpan null = ikut kategori).
+        Text("Pilih Warna", fontWeight = FontWeight.Bold)
+        Text(
+            "Warna ini dipakai untuk aksen & label kategori kegiatan di card. Bila tidak dipilih, dipakai warna kategori.",
+            fontSize = 12.sp, color = Color(0xFF70858E)
+        )
+        ColorPickerSection(
+            selectedHex = colorHex,
+            categoryHex = categoryHex(category),
+            onSelect = { colorHex = it; colorCustom = true },
+            onFollowCategory = { colorCustom = false; colorHex = categoryHex(category) }
+        )
         Spacer(Modifier.height(6.dp))
         OutlinedTextField(note, { note = it }, label = { Text("Catatan") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
         Spacer(Modifier.height(14.dp))
@@ -366,6 +409,9 @@ fun FormScreen(
                     priority = priority,
                     category = category,
                     note = note,
+                    // RONDE 9: simpan warna custom bila dipilih; bila tidak
+                    // custom, simpan null = ikut warna kategori (default).
+                    colorHex = if (colorCustom) colorHex else null,
                     // RONDE 6: logo emoji (untuk kegiatan baru, existing==null
                     // memakai entitas dasar yang iconEmoji-nya "" lalu ditimpa di sini).
                     iconEmoji = iconEmoji

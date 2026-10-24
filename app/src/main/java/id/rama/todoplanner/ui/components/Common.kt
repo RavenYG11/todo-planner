@@ -51,6 +51,101 @@ val CategoryColors: Map<String, Color> = linkedMapOf(
 )
 val Categories: List<String> = CategoryColors.keys.toList()
 
+/* ================= RONDE 9: warna pilihan user ================= */
+
+/** Parse "#RRGGBB" / "RRGGBB" / "#AARRGGBB" -> Color; null bila tidak valid. */
+fun parseHexColor(hex: String?): Color? {
+    if (hex.isNullOrBlank()) return null
+    val clean = hex.trim().removePrefix("#")
+    return try {
+        when (clean.length) {
+            6 -> Color(android.graphics.Color.parseColor("#$clean"))
+            8 -> Color(android.graphics.Color.parseColor("#$clean"))
+            else -> null
+        }
+    } catch (e: Exception) { null }
+}
+
+/** Color -> "#RRGGBB" (alpha dibuang; warna UI di app ini selalu opaque). */
+fun colorToHex(color: Color): String =
+    "#%02X%02X%02X".format(
+        (color.red * 255).toInt(), (color.green * 255).toInt(), (color.blue * 255).toInt()
+    )
+
+/** Versi lebih gelap (untuk teks di atas latar pastel) — tiap kanal dikali [factor]. */
+fun darkenColor(color: Color, factor: Float = 0.72f): Color =
+    Color(color.red * factor, color.green * factor, color.blue * factor, color.alpha)
+
+/** Hex warna kategori lama (dipakai sebagai default bila user tidak memilih warna). */
+fun categoryHex(category: String): String =
+    (CategoryColors[category] ?: Color.Gray).let { colorToHex(it) }
+
+/**
+ * Warna EFEKTIF sebuah kegiatan untuk aksen/dot/pill kategori:
+ * warna pilihan user ([ActivityEntity.colorHex]) bila ada & valid,
+ * selain itu warna kategori lama. Satu fungsi ini dipakai SEMUA card
+ * Todo Utama supaya tidak ada tempat yang lupa mengikuti warna custom.
+ * Daily Reminder tidak wajib mengikuti warna ini (pemanggil Ritual
+ * memang tidak memakai fungsi ini untuk aksennya).
+ */
+fun activityColor(activity: id.rama.todoplanner.data.ActivityEntity): Color =
+    parseHexColor(activity.colorHex) ?: CategoryColors[activity.category] ?: Color.Gray
+
+/**
+ * RONDE 9 (amendemen 5) — warna PRIORITAS, TERPISAH dari warna custom
+ * kategori dan TIDAK PERNAH mengikuti colorHex: Rendah = hijau,
+ * Sedang = biru, Tinggi = merah. Dipakai chip Prioritas di Form dan
+ * teks prioritas di card Beranda (span berwarna, bukan aksen kategori).
+ */
+val PriorityColors: Map<String, Color> = linkedMapOf(
+    "Rendah" to Color(0xFF30A46C),
+    "Sedang" to Color(0xFF0091FF),
+    "Tinggi" to Color(0xFFE5484D)
+)
+fun priorityColor(priority: String): Color = PriorityColors[priority] ?: Color.Gray
+
+/** 12 warna preset form "Pilih Warna" (hex, tanpa nama — swatch berbicara sendiri). */
+val ColorPresets: List<String> = listOf(
+    "#E5484D", "#F76B15", "#FFB224", "#FFE629",
+    "#30A46C", "#46A758", "#0091FF", "#0090A3",
+    "#8E4EC6", "#D6409F", "#946800", "#697177"
+)
+
+/** Warna default label "Daily Reminder" (hijau, sama seperti sebelum ronde 9). */
+val DailyReminderDefaultColor: Color = Color(0xFF22714F)
+
+/**
+ * RONDE 9 (amendemen 6) — warna pill "Daily Reminder" dari hex setting
+ * global: (latar, teks). Hex kosong = default lama persis (latar hijau
+ * muda 0xFFDFF5E9 + teks hijau 0xFF22714F). Hex custom = latar warna itu
+ * 16% + teks versi gelapnya (terbaca di semua preset, termasuk kuning).
+ */
+fun dailyReminderLabelColors(storedHex: String): Pair<Color, Color> {
+    val parsed = parseHexColor(storedHex)
+    if (parsed == null) return Color(0xFFDFF5E9) to DailyReminderDefaultColor
+    return parsed.copy(alpha = 0.16f) to darkenColor(parsed, 0.7f)
+}
+
+/**
+ * RONDE 9 (amendemen 5) — subline card dengan segmen "Prioritas X" yang
+ * BERWARNA sesuai pemetaan tetap (bukan warna custom kategori): prefix
+ * + "Prioritas {priority}" (tebal, warna prioritas) + suffix opsional.
+ * Dipakai ActivityRow & UpcomingItem supaya warna prioritas terlihat di
+ * card tanpa mengubah layout subline.
+ */
+fun annotatedWithPriority(prefix: String, priority: String, suffix: String = ""): androidx.compose.ui.text.AnnotatedString =
+    androidx.compose.ui.text.buildAnnotatedString {
+        append(prefix)
+        pushStyle(
+            androidx.compose.ui.text.SpanStyle(
+                color = priorityColor(priority), fontWeight = FontWeight.Bold
+            )
+        )
+        append("Prioritas $priority")
+        pop()
+        append(suffix)
+    }
+
 /** 6 gradasi avatar dari mockup Profil. */
 val AvatarGradients: List<List<Color>> = listOf(
     listOf(Color(0xFF7FC4EA), Peach),
@@ -357,13 +452,20 @@ val CategoryPastelBg: Map<String, Color> = linkedMapOf(
     "Keuangan" to Color(0xFFFCF0D8)
 )
 
-/** Pill kategori pastel berwarna + label (bahasa visual mockup: chip kategori di baris jam & tabel PDF). */
+/**
+ * Pill kategori pastel berwarna + label (bahasa visual mockup: chip kategori di baris jam & tabel PDF).
+ * RONDE 9: [color] = warna EFEKTIF (custom user bila ada, lihat [activityColor]);
+ * bila null, perilaku lama (warna kategori + latar pastel per kategori).
+ * Warna custom: latar = warna itu 18% + teks = versi gelapnya (terbaca di semua preset).
+ */
 @Composable
-fun CategoryPill(category: String) {
-    val fg = CategoryColors[category] ?: Color.Gray
+fun CategoryPill(category: String, color: Color? = null) {
+    val fg = if (color != null) darkenColor(color) else CategoryColors[category] ?: Color.Gray
+    val bg = if (color != null) color.copy(alpha = 0.18f)
+        else CategoryPastelBg[category] ?: Color(0xFFEDF3F6)
     Box(
         modifier = Modifier.clip(RoundedCornerShape(20.dp))
-            .background(CategoryPastelBg[category] ?: Color(0xFFEDF3F6))
+            .background(bg)
             .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Text(category, color = fg, fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1)
