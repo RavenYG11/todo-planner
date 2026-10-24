@@ -48,8 +48,10 @@ import id.rama.todoplanner.domain.nextReminders
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.Screen
 import id.rama.todoplanner.ui.components.AvatarView
-import id.rama.todoplanner.ui.components.CategoryColors
+import id.rama.todoplanner.ui.components.CategoryPill
 import id.rama.todoplanner.ui.components.GradientButton
+import id.rama.todoplanner.ui.components.activityColor
+import id.rama.todoplanner.ui.components.priorityColor
 import id.rama.todoplanner.ui.components.PhaseScenery
 import id.rama.todoplanner.ui.components.PastelPill
 import id.rama.todoplanner.ui.components.RingProgress
@@ -77,7 +79,14 @@ import java.util.Locale
  * Header tetap TANPA pintu ketuk ke Profil (keputusan Rama #82).
  */
 @Composable
-fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Occurrence) -> Unit) {
+fun HomeScreen(
+    vm: AppViewModel,
+    onNavigate: (Screen) -> Unit,
+    onOpenDetail: (Occurrence) -> Unit,
+    // RONDE 9: Beranda butuh jalur Edit langsung (menu aksi lingkaran
+    // Ritual) tanpa lewat Detail dulu; TodoApp meneruskannya ke Form.
+    onEditActivity: (Long) -> Unit = {}
+) {
     val activities by vm.activities.collectAsState()
     val profile by vm.profile.collectAsState()
     var now by remember { mutableStateOf(LocalDateTime.now()) }
@@ -89,13 +98,36 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
     val total = todays.size
     val progress = if (total == 0) 0f else doneCount.toFloat() / total
     val pct = (progress * 100).toInt()
-    // RONDE 8 — pemisahan Beranda: "Kegiatan Berikutnya" HANYA Todo Utama
-    // (Daily Reminder disaring keluar; ia punya kartu "Ritual" sendiri).
+    // RONDE 9 — card "Kegiatan Hari Ini" (nama baru dari "Kegiatan
+    // Berikutnya", poin 2): HANYA Todo Utama, TAPI kini menampilkan
+    // SEMUA Todo Utama hari ini (bukan lagi take(2) yang belum selesai
+    // saja) dengan MEKANISME SORTIR poin 3:
+    //  - BELUM selesai dulu, paling mepet jamnya ke atas (jam mulai yang
+    //    masih di depan didahulukan, lalu yang sudah lewat, masing-masing
+    //    urut jam naik) — "mepet" dibaca dari jam mulai, bukan dari jam
+    //    selesai (yang belum selesai belum punya jam selesai).
+    //  - SUDAH selesai menumpuk di BAWAH, sesama selesai diurutkan
+    //    berdasarkan WAKTU SELESAI naik (tanpa timestamp = paling akhir,
+    //    lalu jam mulai). Begitu user mengetuk lingkaran "Selesai" pada
+    //    sebuah baris, toggleDone mengubah done-nya dan baris itu PINDAH
+    //    ke bawah secara otomatis lewat sortir ini (recompose dari Flow).
+    // Berlaku untuk card ini saja; Ritual tidak berubah semantiknya.
     val upcoming = remember(todays, now) {
         val nowMin = now.hour * 60 + now.minute
-        todays.filter { !it.done && !it.activity.isChecklist }
-            .sortedWith(compareBy({ if ((it.activity.startMinutes ?: 0) >= nowMin) 0 else 1 }, { it.activity.startMinutes ?: 0 }))
-            .take(2)
+        val todos = todays.filter { !it.activity.isChecklist }
+        val undone = todos.filter { !it.done }.sortedWith(
+            compareBy(
+                { if ((it.activity.startMinutes ?: 0) >= nowMin) 0 else 1 },
+                { it.activity.startMinutes ?: 0 }
+            )
+        )
+        val done = todos.filter { it.done }.sortedWith(
+            compareBy(
+                { it.completedAtMillis ?: Long.MAX_VALUE },
+                { it.activity.startMinutes ?: 0 }
+            )
+        )
+        undone + done
     }
     // RONDE 4: SATU entri per kegiatan (kemunculan berikutnya saja) — dulu
     // ekspansi 14 hari membuat kegiatan harian mendominasi daftar.
@@ -249,23 +281,32 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
         }
         Spacer(Modifier.height(12.dp))
 
-        // ===== Kegiatan Berikutnya (kartu TERPISAH, mockup) =====
+        // ===== Kegiatan Hari Ini (RONDE 9: nama baru "Kegiatan
+        // Berikutnya"; isi = semua Todo Utama hari ini + sortir poin 3) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("⏰ Kegiatan Berikutnya", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                Text("⏰ Kegiatan Hari Ini", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
                 if (upcoming.isEmpty()) {
                     Text(
-                        "Tidak ada kegiatan tersisa hari ini", fontSize = 12.5.sp,
+                        "Tidak ada kegiatan hari ini", fontSize = 12.5.sp,
                         color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
                     )
                 } else {
-                    upcoming.forEach { occ -> UpcomingItem(occ) { onOpenDetail(occ) } }
+                    upcoming.forEach { occ ->
+                        UpcomingItem(
+                            occ,
+                            onToggleDone = { vm.toggleDone(occ.activity, occ.date.toEpochDay(), it) },
+                            onClick = { onOpenDetail(occ) }
+                        )
+                    }
                 }
             }
         }
         Spacer(Modifier.height(12.dp))
 
-        // ===== Ritual (kartu BARU ronde 8 — HANYA Daily Reminder) =====
+        // ===== Ritual (kartu BARU ronde 8 — HANYA Daily Reminder;
+        // RONDE 9: barisnya jadi RitualRow — countdown kanan, judul+pill
+        // kiri, lingkaran checklist bermenu aksi; ✨ di sini sudah diganti) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text("🪄 Ritual", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
@@ -277,7 +318,14 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
                     )
                 } else {
                     upcomingRituals.forEach { (activity, date, time) ->
-                        NextReminderRow(activity, date, time, today)
+                        RitualRow(
+                            activity = activity, date = date, trigger = time, today = today,
+                            dailyReminderColor = profile.dailyReminderColor,
+                            onOpenDetail = { onOpenDetail(Occurrence(activity, date)) },
+                            onEdit = { onEditActivity(activity.id) },
+                            onDelete = { vm.deleteActivity(activity) },
+                            onMarkDone = { vm.toggleDone(activity, date.toEpochDay(), true) }
+                        )
                     }
                 }
             }
@@ -296,8 +344,11 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
                 } else {
                     // RONDE 8: kartu ini HANYA Todo Utama; Daily Reminder
                     // sudah pindah ke kartu "Ritual" di atas.
+                    // RONDE 9: pill Daily Reminder tidak ada di sini (hanya
+                    // Todo Utama), tapi warna pill global tetap diteruskan
+                    // supaya baris ini konsisten bila dipakai ulang.
                     upcomingReminderTodos.forEach { (activity, date, time) ->
-                        NextReminderRow(activity, date, time, today)
+                        NextReminderRow(activity, date, time, today, profile.dailyReminderColor)
                     }
                 }
                 Spacer(Modifier.height(6.dp))
@@ -309,17 +360,12 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
         }
         Spacer(Modifier.height(14.dp))
 
-        // ===== Kegiatan Hari Ini =====
-        Text("Kegiatan Hari Ini", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink)
-        Spacer(Modifier.height(4.dp))
-        if (todays.isEmpty()) {
-            Text("Belum ada kegiatan. Ketuk tombol + untuk menambah.", fontSize = 13.sp, color = Color(0xFF70858E))
-        } else {
-            todays.forEach { occ ->
-                ActivityRow(occ, onToggleDone = { vm.toggleDone(occ.activity, occ.date.toEpochDay(), it) }, onClick = { onOpenDetail(occ) })
-            }
-        }
-        Spacer(Modifier.height(14.dp))
+        // RONDE 9 (poin 2a): section "Kegiatan Hari Ini" (daftar lengkap
+        // seharian) DIHAPUS dari Beranda — datanya tetap tersimpan di
+        // Room, riwayat penandaan tetap tampil di Detail, dan daftar
+        // harian lengkap tetap ada di layar Template Harian. Card
+        // "Kegiatan Hari Ini" di atas (bekas "Kegiatan Berikutnya")
+        // adalah satu-satunya daftar kegiatan Beranda kini.
 
         // ===== Mulai dari Template (grid 2x2 mockup) =====
         Text("Mulai dari Template", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink)
@@ -343,10 +389,21 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
     }
 }
 
-/** Item "Kegiatan Berikutnya": garis aksen kategori + lingkaran centang kosong + judul/sub-info (mockup .task). */
+/**
+ * Item card "Kegiatan Hari Ini" (RONDE 9): garis aksen + lingkaran
+ * centang + judul + pill kategori + sub-info (mockup .task).
+ *  - RONDE 9: lingkaran kini BISA DIKETUK = toggle Selesai (dulu hanya
+ *    hiasan); ketuk = baris pindah ke bawah lewat sortir card (poin 3).
+ *    Baris selesai: lingkaran terisi hijau + ✓, judul dicoret abu-abu.
+ *  - RONDE 9: aksen & pill kategori memakai warna EFEKTIF
+ *    ([activityColor] = custom user bila ada, else warna kategori lama).
+ *  - RONDE 9 (amendemen 5): kata prioritas di subline memakai warna
+ *    prioritas TETAP ([priorityColor] — hijau/biru/merah), BUKAN warna
+ *    custom kategori; segmen lain subline tetap abu-abu.
+ */
 @Composable
-private fun UpcomingItem(occ: Occurrence, onClick: () -> Unit) {
-    val accent = CategoryColors[occ.activity.category] ?: Color.Gray
+private fun UpcomingItem(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () -> Unit) {
+    val accent = activityColor(occ.activity)
     Row(
         modifier = Modifier.fillMaxWidth().clickable { onClick() }
             .padding(vertical = 8.dp),
@@ -358,21 +415,51 @@ private fun UpcomingItem(occ: Occurrence, onClick: () -> Unit) {
         Box(
             modifier = Modifier.width(22.dp).height(22.dp)
                 .clip(CircleShape)
+                .background(
+                    if (occ.done) id.rama.todoplanner.ui.theme.GreenDeep else Color.Transparent
+                )
                 .border(2.dp, id.rama.todoplanner.ui.theme.GreenDeep, CircleShape)
-        )
+                .clickable { onToggleDone(!occ.done) },
+            contentAlignment = Alignment.Center
+        ) {
+            if (occ.done) {
+                Text("✓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
         Spacer(Modifier.width(10.dp))
-        Column {
-            Text(occ.activity.displayTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Ink)
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    occ.activity.displayTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
+                    color = if (occ.done) Color(0xFF9FB0B8) else Ink,
+                    textDecoration = if (occ.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(Modifier.width(6.dp))
+                CategoryPill(occ.activity.category, accent)
+            }
             val end = occ.activity.endMinutes
             val timeText = if (end != null) {
                 "${Dates.formatTime(occ.activity.startMinutes)}–${Dates.formatTime(end)}"
             } else {
                 Dates.formatTime(occ.activity.startMinutes)
             }
-            Text(
-                "$timeText • ${occ.activity.category} • Prioritas ${occ.activity.priority}",
-                fontSize = 12.sp, color = Color(0xFF70858E)
-            )
+            val subline = androidx.compose.ui.text.buildAnnotatedString {
+                append("$timeText • ${occ.activity.category} • ")
+                pushStyle(
+                    androidx.compose.ui.text.SpanStyle(
+                        color = priorityColor(occ.activity.priority),
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+                append("Prioritas ${occ.activity.priority}")
+                pop()
+                if (occ.done) {
+                    val doneLabel = Dates.completedLabel(occ.completedAtMillis)
+                    if (doneLabel.isNotBlank()) append(" • $doneLabel")
+                }
+            }
+            Text(subline, fontSize = 12.sp, color = Color(0xFF70858E))
         }
     }
 }

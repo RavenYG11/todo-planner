@@ -2,6 +2,7 @@ package id.rama.todoplanner.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,14 +13,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,12 +39,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.rama.todoplanner.data.ActivityEntity
 import id.rama.todoplanner.domain.Dates
-import id.rama.todoplanner.ui.components.CategoryColors
+import id.rama.todoplanner.ui.components.DailyReminderDefaultColor
 import id.rama.todoplanner.ui.components.PastelPill
+import id.rama.todoplanner.ui.components.activityColor
+import id.rama.todoplanner.ui.components.darkenColor
+import id.rama.todoplanner.ui.theme.GreenDeep
 import id.rama.todoplanner.ui.theme.Ink
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 
 /**
  * RONDE 8 — baris "Schedule Warning / Mendatang" (penanda Daily Reminder kini ✨ telanjang,
@@ -122,7 +136,10 @@ fun NextReminderRow(
     activity: ActivityEntity,
     date: LocalDate,
     trigger: LocalDateTime,
-    today: LocalDate
+    today: LocalDate,
+    // RONDE 9 (amendemen 6): warna pill "Daily Reminder" global; default =
+    // hijau lama supaya pemanggil lama yang belum meneruskan profil tetap benar.
+    dailyReminderColor: Color = DailyReminderDefaultColor
 ) {
     val jam = trigger.format(DateTimeFormatter.ofPattern("HH.mm"))
     val headline = "${reminderDayPrefix(date, today)} $jam — ${activity.displayTitle}"
@@ -133,10 +150,14 @@ fun NextReminderRow(
         if (activity.isChecklist) {
             // RONDE 8: penanda Daily Reminder = emoji SPARKLES TELANJANG —
             // tanpa lingkaran/chip latar sama sekali (koreksi atas wink ronde 7).
+            // RONDE 9: baris ini TETAP dipakai Schedule Warning & layar
+            // Reminder — ✨ di sini TIDAK berubah; yang diganti lingkaran
+            // hanya card Ritual Beranda (RitualRow di bawah).
             Text("✨", fontSize = 16.sp, modifier = Modifier.padding(top = 2.dp))
         } else {
             // RONDE 8: dot kategori EXPANDING GLOW (dot diam, cincin mengembang).
-            ExpandingGlowCategoryDot(CategoryColors[activity.category] ?: Color.Gray)
+            // RONDE 9: dot mengikuti warna custom user (activityColor).
+            ExpandingGlowCategoryDot(activityColor(activity))
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -147,7 +168,11 @@ fun NextReminderRow(
                 )
                 if (activity.isChecklist) {
                     Spacer(Modifier.width(6.dp))
-                    PastelPill("Daily Reminder", Color(0xFFDFF5E9), Color(0xFF22714F))
+                    PastelPill(
+                        "Daily Reminder",
+                        dailyReminderColor.copy(alpha = 0.20f),
+                        darkenColor(dailyReminderColor)
+                    )
                 }
             }
             Text(
@@ -164,5 +189,146 @@ fun NextReminderRow(
                 fontSize = 12.sp, color = Color(0xFF70858E)
             )
         }
+    }
+}
+
+/**
+ * RONDE 9 — hitung mundur ke bunyi berikutnya (dipakai HANYA card Ritual):
+ *  - bunyi berikutnya BUKAN hari ini -> "Besok HH:mm" (atau tanggal singkat
+ *    bila lebih jauh lagi — pertahanan, karena trigger mingguan bisa > besok).
+ *  - hari ini & >= 1 jam -> "X jam Y mnt lagi"; >= 1 menit -> "Z mnt lagi";
+ *    < 1 menit -> "W dtk lagi"; sudah lewat -> "Sebentar lagi".
+ * Format jam memakai titik (HH.mm) seperti seluruh app, bukan titik dua.
+ */
+fun formatCountdown(trigger: LocalDateTime, now: LocalDateTime, today: LocalDate): String {
+    val date = trigger.toLocalDate()
+    if (date != today) {
+        val jam = trigger.format(DateTimeFormatter.ofPattern("HH.mm"))
+        return if (date == today.plusDays(1)) "Besok $jam"
+        else "${date.format(Dates.shortDate)} $jam"
+    }
+    val seconds = Duration.between(now, trigger).seconds
+    if (seconds <= 0) return "Sebentar lagi"
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    val secs = seconds % 60
+    return when {
+        hours > 0 -> "$hours jam $minutes mnt lagi"
+        minutes > 0 -> "$minutes mnt lagi"
+        else -> "$secs dtk lagi"
+    }
+}
+
+/**
+ * RONDE 9 — baris card Ritual Beranda (MENGGANTIKAN NextReminderRow di
+ * card ini saja; Schedule Warning & layar Reminder tetap memakai
+ * NextReminderRow dengan ✨-nya):
+ *  - PALING KIRI rapat: judul kegiatan + pill "Daily Reminder" (warna
+ *    pill = warna global amendemen 6, bukan hijau hardcoded).
+ *  - PALING KANAN: hitung mundur ke bunyi berikutnya (diperbarui tiap
+ *    detik oleh loop lokal baris ini — bukan tick 30 detik Beranda —
+ *    supaya "W dtk lagi" benar-benar bergerak).
+ *  - Logo ✨ DIGANTI lingkaran checklist (seperti Todo Utama): lingkaran
+ *    terisi hijau + ✓ bila hari ini sudah pernah ditandai; KLIK lingkaran
+ *    membuka MENU AKSI yang sama seperti Todo Utama di Detail:
+ *    Edit, Hapus (dengan konfirmasi), Tandai Selesai.
+ *  - Subline tetap: interval • kategori • terakhir ditandai (tanpa ✨
+ *    di ekor subline — logo sparkles card ini sudah diganti lingkaran;
+ *    ✨ di Schedule Warning/Detail/lainnya tidak berubah).
+ *  - Ketuk baris (di luar lingkaran) = buka Detail, seperti baris Todo Utama.
+ */
+@Composable
+fun RitualRow(
+    activity: ActivityEntity,
+    date: LocalDate,
+    trigger: LocalDateTime,
+    today: LocalDate,
+    dailyReminderColor: Color,
+    onOpenDetail: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onMarkDone: () -> Unit
+) {
+    var now by remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) { while (true) { now = LocalDateTime.now(); delay(1_000) } }
+    var showMenu by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    val markedToday = activity.lastDailyCompletion(today.toEpochDay()) != null
+    val last = activity.lastDailyCompletion(date.toEpochDay())
+
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable { onOpenDetail() }
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Lingkaran checklist — klik = menu aksi (bukan langsung tandai).
+        Box {
+            Box(
+                modifier = Modifier.size(26.dp).clip(CircleShape)
+                    .background(if (markedToday) GreenDeep else Color.Transparent)
+                    .border(2.dp, GreenDeep, CircleShape)
+                    .clickable { showMenu = true },
+                contentAlignment = Alignment.Center
+            ) {
+                if (markedToday) {
+                    Text("✓", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("✏️ Edit") },
+                    onClick = { showMenu = false; onEdit() }
+                )
+                DropdownMenuItem(
+                    text = { Text("🗑️ Hapus") },
+                    onClick = { showMenu = false; showDeleteConfirm = true }
+                )
+                DropdownMenuItem(
+                    text = { Text("✨ Tandai Selesai") },
+                    onClick = { showMenu = false; onMarkDone() }
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        // Judul + pill rapat ke PALING KIRI (kolom weight 1 mendorong
+        // countdown ke sisi paling kanan baris).
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    activity.displayTitle, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp,
+                    color = Ink, modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(Modifier.width(6.dp))
+                PastelPill(
+                    "Daily Reminder",
+                    dailyReminderColor.copy(alpha = 0.20f),
+                    darkenColor(dailyReminderColor)
+                )
+            }
+            Text(
+                "tiap ${activity.intervalLabel()} • ${activity.category}" +
+                    if (last != null) " • terakhir ditandai ${Dates.formatCompletedTime(last)}" else "",
+                fontSize = 12.sp, color = Color(0xFF70858E)
+            )
+        }
+        // Countdown di SISI PALING KANAN card (di luar kolom kiri).
+        Spacer(Modifier.width(8.dp))
+        Text(
+            formatCountdown(trigger, now, today),
+            fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Ink,
+            maxLines = 1
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Hapus kegiatan ini?") },
+            text = { Text(activity.title) },
+            confirmButton = {
+                TextButton(onClick = { showDeleteConfirm = false; onDelete() }) { Text("Hapus") }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Batal") } }
+        )
     }
 }

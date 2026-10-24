@@ -58,6 +58,7 @@ import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.Screen
 import id.rama.todoplanner.ui.components.CategoryColors
 import id.rama.todoplanner.ui.components.GradientBar
+import id.rama.todoplanner.ui.components.PresetSwatchRow
 import id.rama.todoplanner.ui.components.GradientButton
 import id.rama.todoplanner.ui.components.PastelPill
 import id.rama.todoplanner.ui.components.PeakIllustration
@@ -223,7 +224,7 @@ fun ReminderScreen(vm: AppViewModel) {
                     )
                 } else {
                     upcomingTodos.forEach { (activity, date, time) ->
-                        NextReminderRow(activity, date, time, today)
+                        NextReminderRow(activity, date, time, today, profile.dailyReminderColor)
                     }
                 }
             }
@@ -241,7 +242,7 @@ fun ReminderScreen(vm: AppViewModel) {
                     )
                 } else {
                     upcomingChecklists.forEach { (activity, date, time) ->
-                        NextReminderRow(activity, date, time, today)
+                        NextReminderRow(activity, date, time, today, profile.dailyReminderColor)
                     }
                 }
             }
@@ -492,13 +493,54 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
                 VibrationDiagnosticLine()
             }
         }
+        // ===== RONDE 9 (amendemen 6): warna label "Daily Reminder"
+        // GLOBAL — satu warna untuk semua pill label itu (bukan per-item),
+        // diubah dari sini, default hijau lama. Pratinjau pill di bawah
+        // deretan swatch memakai warna yang sedang terpilih.
+        SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("🏷️ Warna Label Daily Reminder", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                Text(
+                    "Satu warna untuk semua label \"Daily Reminder\" (Beranda, Schedule Warning, layar Reminder).",
+                    fontSize = 12.5.sp, color = Color(0xFF70858E)
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PastelPill(
+                        "Daily Reminder",
+                        profile.dailyReminderColor.copy(alpha = 0.20f),
+                        id.rama.todoplanner.ui.components.darkenColor(profile.dailyReminderColor)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (profile.dailyReminderColorHex.isBlank()) "Hijau default"
+                        else profile.dailyReminderColorHex.uppercase(),
+                        fontSize = 12.5.sp, color = Color(0xFF70858E)
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                // RONDE 9 (amendemen 6, koreksi auditor): setting ini harus
+                // punya preset + palette manual seperti form poin 4 — bukan
+                // hanya deretan preset. ColorPickerSection lengkap dipakai
+                // (preset + slider hue + input hex); tombol kembalinya
+                // berarti "kembali ke hijau default", bukan "ikuti kategori".
+                id.rama.todoplanner.ui.components.ColorPickerSection(
+                    selectedHex = if (profile.dailyReminderColorHex.isBlank()) "#22714F"
+                        else profile.dailyReminderColorHex,
+                    categoryHex = "#22714F",
+                    onSelect = { vm.setDailyReminderColor(it) },
+                    onFollowCategory = { vm.setDailyReminderColor("") },
+                    followLabel = "Kembali ke hijau default"
+                )
+            }
+        }
         SettingRow("📄 Export PDF") { onNavigate(Screen.Export) }
         SettingRow("💾 Backup — Export Data") { exportLauncher.launch("todo-planner-backup.json") }
         SettingRow("📥 Import / Pulihkan Data") { importLauncher.launch(arrayOf("application/json")) }
         SoftCard(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text("Tentang", fontWeight = FontWeight.Bold, color = Ink)
-                Text("Todo Planner v1.0.5 — full lokal & offline.")
+                Text("Todo Planner v1.0.7 — full lokal & offline.")
             }
         }
     }

@@ -58,6 +58,7 @@ import id.rama.todoplanner.domain.occurrencesBetween
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.components.CategoryColors
 import id.rama.todoplanner.ui.components.CategoryPill
+import id.rama.todoplanner.ui.components.activityColor
 import id.rama.todoplanner.ui.components.DawnIllustration
 import id.rama.todoplanner.ui.components.GradientBar
 import id.rama.todoplanner.ui.components.GradientButton
@@ -141,7 +142,7 @@ private fun CompactRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick
             )
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                CategoryPill(occ.activity.category)
+                CategoryPill(occ.activity.category, activityColor(occ.activity))
                 if (!isDaily && occ.done) {
                     Spacer(Modifier.width(6.dp))
                     Text(
@@ -258,7 +259,7 @@ fun DailyScreen(
                             color = Color(0xFF58707C), modifier = Modifier.width(46.dp).padding(top = 2.dp)
                         )
                         val dotColor = inHour.firstOrNull()
-                            ?.let { CategoryColors[it.activity.category] } ?: Color(0xFFDCE8ED)
+                            ?.let { activityColor(it.activity) } ?: Color(0xFFDCE8ED)
                         Box(
                             modifier = Modifier.size(11.dp).clip(CircleShape).background(dotColor)
                                 .align(Alignment.Top).padding(top = 4.dp)
@@ -298,7 +299,7 @@ fun DailyScreen(
                                         }
                                         Spacer(Modifier.height(3.dp))
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            CategoryPill(occ.activity.category)
+                                            CategoryPill(occ.activity.category, activityColor(occ.activity))
                                             if (occ.done) {
                                                 Spacer(Modifier.width(6.dp))
                                                 Text(

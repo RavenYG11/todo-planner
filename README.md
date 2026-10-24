@@ -1222,3 +1222,121 @@ mati (reduce motion), garis tampil statis tanpa sapuan.
   expanding glow, shimmer perak, deskripsi timeline, kartu Ritual,
   notifikasi bunyi Daily Reminder yang kini bertahan + bisa
   diberhentikan) terbukti lewat uji HP Rama berikutnya.
+
+## Perbaikan Ronde 9 — Uji HP v1.0.6 (#94, 24 Okt 2026)
+
+### 1. Layout ulang card Ritual (Beranda)
+Baris Ritual tidak lagi memakai `NextReminderRow` (yang dipakai
+Schedule Warning & layar Reminder — ✨ di sana TIDAK berubah).
+Baris baru `RitualRow` (di `ReminderRows.kt`):
+- **Judul + pill "Daily Reminder" rapat ke PALING KIRI** (kolom weight 1).
+- **Hitung mundur ke bunyi berikutnya di SISI PALING KANAN** card —
+  `formatCountdown`: "X jam Y mnt lagi" / "Z mnt lagi" / "W dtk lagi",
+  diperbarui tiap detik oleh loop lokal baris (bukan tick 30 detik
+  Beranda, supaya detiknya benar-benar bergerak); bila bunyi berikutnya
+  bukan hari ini tampil "Besok HH:mm" (atau tanggal singkat bila lebih jauh).
+- **Logo ✨ DIGANTI lingkaran checklist** (seperti Todo Utama):
+  terisi hijau + ✓ bila hari ini sudah pernah ditandai. KLIK lingkaran
+  membuka **MENU AKSI** (DropdownMenu): Edit, Hapus (dengan konfirmasi),
+  Tandai Selesai — sama seperti aksi Todo Utama di Detail. Ketuk baris
+  di luar lingkaran tetap membuka Detail. Subline tetap
+  (interval • kategori • terakhir ditandai, tanpa ✨ di ekornya).
+- Edit dari menu ini tidak lewat Detail dulu: `HomeScreen` menerima
+  `onEditActivity` dari `TodoApp` yang langsung membuka
+  `Screen.Form(editId)`.
+
+### 2. Restruktur card Beranda
+- Section **"Kegiatan Hari Ini" (daftar lengkap seharian) DIHAPUS dari
+  Beranda** — datanya tetap tersimpan; Detail tetap menampilkan riwayat
+  penandaan (Daily Reminder) / status (Todo Utama).
+- Card **"Kegiatan Berikutnya" DIUBAH NAMA saja menjadi "Kegiatan Hari
+  Ini"** (ikon ⏰ dipertahankan). Card "Schedule Warning" Beranda tidak
+  berubah.
+
+### 3. Mekanisme sortir card "Kegiatan Hari Ini" (baru)
+Daftar card ini kini = SEMUA Todo Utama hari itu (bukan lagi cuplikan
+take(2) yang belum selesai saja):
+- **Belum selesai dulu**, paling mepet jamnya ke atas: jam mulai yang
+  masih di depan didahulukan, lalu yang sudah lewat, masing-masing urut
+  jam naik.
+- **Sudah selesai menumpuk di BAWAH**, sesama selesai diurutkan
+  berdasarkan WAKTU SELESAI naik (tanpa timestamp = paling akhir, lalu
+  jam mulai).
+- Lingkaran di `UpcomingItem` kini BISA DIKETUK (dulu hanya hiasan):
+  ketuk = toggle Selesai, dan baris PINDAH ke bawah secara otomatis
+  lewat sortir ini (recompose dari Flow). Baris selesai: lingkaran
+  terisi hijau + ✓, judul dicoret abu-abu. Berlaku untuk card ini saja;
+  Ritual tidak berubah semantiknya.
+
+### 4. FITUR BARU — "Pilih Warna" di form Tambah/Edit
+- Field baru per kegiatan **`colorHex`** (nullable; null = ikut warna
+  kategori lama), **migrasi Room 4->5** non-destruktif, ikut backup JSON
+  (backup lama tanpa field ini dibaca sebagai null = default kategori).
+- Section **"Pilih Warna" tepat di bawah Kategori** di form:
+  deretan **12 warna preset** (swatch) + **palette manual** (slider hue
+  0–360° pelangi + input hex 6 digit + tombol "Pakai warna ini" /
+  "Pakai hex"). Komponennya `ColorPickerSection` di
+  `ui/components/ColorPicker.kt` (dipakai juga Pengaturan, poin 6).
+- Logika anti-timpa: `colorCustom` membedakan "user sengaja memilih"
+  vs "warna ini sekadar default kategori" — ganti kategori HANYA
+  menggeser warna bila belum custom; "Ikuti warna kategori"
+  mengembalikan ke default (disimpan null).
+- Warna pilihan dipakai untuk **WARNA KATEGORI + LABEL KATEGORI (pill)**
+  di card-card Todo Utama lewat SATU fungsi `activityColor()`
+  (custom bila ada & valid, else warna kategori lama): aksen +
+  `ShimmerAccentBar` di `UpcomingItem`, aksen `ActivityRow`, dot
+  `ExpandingGlowCategoryDot` di `NextReminderRow`, `CategoryPill`
+  (dengan latar 18% + teks gelap), titik timeline Harian. Daily Reminder
+  tidak wajib mengikutinya (Ritual tidak memakai fungsi ini).
+
+### 5. Warna prioritas TETAP (amendemen 5 — terpisah dari warna custom)
+Pemetaan tetap `PriorityColors` (`priorityColor()`): **Rendah = hijau
+(0xFF30A46C), Sedang = biru (0xFF0091FF), Tinggi = merah (0xFFE5484D)**.
+TIDAK PERNAH mengikuti `colorHex`. Diterapkan di: chip Prioritas di
+form (aksen per opsi), segmen "Prioritas X" di subline card
+(`ActivityRow`, `UpcomingItem` — span berwarna, layout subline tidak
+berubah), nilai Prioritas di Detail (teks tebal berwarna).
+
+### 6. Warna label "Daily Reminder" GLOBAL (amendemen 6 — bukan per-item)
+- Setting **`dailyReminderColorHex` di AppPrefs** (default kosong =
+  hijau lama persis: latar 0xFFDFF5E9 + teks 0xFF22714F), diekspos
+  lewat `ProfileState.dailyReminderColor` + `vm.setDailyReminderColor()`.
+- Diubah dari **Pengaturan** (kartu "🏷️ Warna Label Daily Reminder"):
+  pratinjau pill + preset + palette manual lengkap + "Kembali ke hijau
+  default" (menyimpan string kosong).
+- Warna ini dipakai pill "Daily Reminder" di SEMUA tempat:
+  `RitualRow`, `NextReminderRow` (Schedule Warning Beranda + layar
+  Reminder — lewat parameter `dailyReminderColor`, default hijau lama
+  untuk pemanggil lama). Warna custom: latar 20% + teks versi gelap
+  (`darkenColor`) supaya terbaca di semua preset.
+
+### Hasil build ronde 9
+- **Status: BUILD SUCCESSFUL** (Gradle 8.7 offline, `clean
+  assembleDebug`, keystore.properties ADA → signing permanen).
+- **APK:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **17.067.516 byte**, sha256
+  `c05506eb4f708d87153624041c00933bbc618c537add99587db456739dd7f089`;
+  salinan staging `../TodoPlanner-debug.apk` ditimpa (hash sama,
+  diverifikasi ulang setelah clean build).
+- **GERBANG LOLOS:** `apksigner verify --print-certs` → Signer #1
+  SHA-256 digest =
+  `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+  — SAMA PERSIS dengan keystore permanen → update timpa di atas v1.0.6
+  aman.
+- Terverifikasi: package `id.rama.todoplanner` versionCode **8** /
+  versionName **1.0.7**, minSdk 26, targetSdk 34; permission tetap
+  **TANPA INTERNET**; zip 157 entri, testzip bersih; migrasi Room 4->5
+  non-destruktif (`colorHex`); `ReminderSoundPlayer.kt` identik
+  byte-per-byte dengan v1.0.3 (sha256
+  `9441d784fde596fa8f1a3966a391aa76e01efe1dbe41b271f16de31c2138bc7e`)
+  — getar tetap dibekukan.
+- **Catatan jujur:** verifikasi di VM sebatas compile + signature +
+  badging + isi dex. Perilaku runtime ronde 9 (countdown Ritual, menu
+  aksi lingkaran, sortir pindah-ke-bawah, warna custom & prioritas,
+  warna label global) terbukti lewat uji HP Rama berikutnya.
+- **Catatan proses:** seperti ronde 6–8, sebagian implementasi ronde 9
+  sudah diterapkan penulis paralel sebelum koordinator menulis kode;
+  koordinator mengaudit baris-per-baris terhadap instruksi #94 +
+  amendemen, melengkapi 3 celah (warna prioritas di Detail, palette
+  manual di setting warna label, bab README ini), lalu clean build
+  pembuktian.
