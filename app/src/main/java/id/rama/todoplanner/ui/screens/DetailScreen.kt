@@ -134,17 +134,19 @@ fun DetailScreen(
                     )
                 }
                 if (activity.isChecklist) {
-                    // RONDE 7 — status Daily Reminder = daftar jam penandaan
-                    // hari itu (bukan state selesai) + bunyi berikutnya.
+                    // RONDE 7 — status Daily Reminder = jam penandaan hari
+                    // itu (bukan state selesai) + bunyi berikutnya.
+                    // RONDE 10: HANYA jam terakhir ditandai selesai
+                    // (daftar lengkap ronde 7 dinilai menuh-menuhin).
                     val times = activity.dailyCompletionTimes(date.toEpochDay())
                     DetailLine(
-                        "Ditandai selesai ✨",
+                        "Terakhir ditandai",
                         if (times.isEmpty()) "Belum ditandai hari ini"
-                        else times.joinToString(" • ") { Dates.formatCompletedTime(it) }
+                        else Dates.formatCompletedTime(times.last())
                     )
                     if (times.isNotEmpty() && activity.intervalMillis() != null) {
                         DetailLine(
-                            "Bunyi berikutnya",
+                            "Reminder Berikutnya",
                             Dates.formatCompletedTime(times.last() + activity.intervalMillis()!!)
                         )
                     }

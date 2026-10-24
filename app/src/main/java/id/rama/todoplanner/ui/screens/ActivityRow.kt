@@ -105,13 +105,15 @@ fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () ->
                         fontSize = 12.sp, color = Color(0xFF70858E)
                     )
                     if (dailyTimes.isNotEmpty()) {
+                        // RONDE 10: HANYA jam terakhir ditandai selesai
+                        // (daftar lengkap ronde 7 dinilai menuh-menuhin).
                         Text(
-                            text = "✨ Ditandai selesai: " + dailyTimes.joinToString(" • ") { Dates.formatCompletedTime(it) },
+                            text = "Terakhir ditandai: " + Dates.formatCompletedTime(dailyTimes.last()),
                             fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep
                         )
                         val nextMs = dailyTimes.last() + (occ.activity.intervalMillis() ?: 0L)
                         Text(
-                            text = "Bunyi berikutnya: " + Dates.formatCompletedTime(nextMs),
+                            text = "Reminder Berikutnya: " + Dates.formatCompletedTime(nextMs),
                             fontSize = 12.sp, color = Color(0xFF22714F)
                         )
                     }

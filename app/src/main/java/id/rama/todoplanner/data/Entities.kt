@@ -120,10 +120,15 @@ data class ActivityEntity(
     }
 
     /**
-     * RONDE 7 — semua waktu penandaan selesai Daily Reminder pada [epochDay],
-     * urut naik (kosong = belum pernah ditandai hari itu). Fallback data lama:
-     * timestamp ronde 6 di [doneTimestamps] untuk hari itu dihitung sebagai
-     * satu penandaan, supaya riwayat & jangkar reset tidak hilang saat update.
+     * RONDE 10 — MENGGANTIKAN aturan daftar-lengkap ronde 7: hanya penandaan
+     * TERAKHIR per hari yang dikembalikan (kosong = belum pernah ditandai
+     * hari itu). Data lama yang masih menyimpan banyak timestamp sehari
+     * dipangkas DI SISI BACA di sini, jadi semua layar dan perhitungan
+     * bunyi berikutnya otomatis memakai yang terakhir saja. Fallback data
+     * lama: timestamp ronde 6 di [doneTimestamps] untuk hari itu dihitung
+     * sebagai satu penandaan, supaya jangkar reset tidak hilang saat update.
+     * Bentuk list dipertahankan (maksimal satu elemen) supaya pemanggil
+     * lama (isNotEmpty / last) tidak perlu diubah.
      */
     fun dailyCompletionTimes(epochDay: Long): List<Long> {
         val fromLog = dailyDoneLog.split(";").mapNotNull { entry ->
@@ -131,7 +136,7 @@ data class ActivityEntity(
             if (bits.size != 2 || bits[0].toLongOrNull() != epochDay) null
             else bits[1].split(",").mapNotNull { it.trim().toLongOrNull() }
         }.flatten()
-        if (fromLog.isNotEmpty()) return fromLog.sorted()
+        if (fromLog.isNotEmpty()) return listOf(fromLog.max())
         val legacy = completedAtMillis(epochDay)
         return if (isChecklist && legacy != null) listOf(legacy) else emptyList()
     }
@@ -143,6 +148,11 @@ data class ActivityEntity(
      * RONDE 7 — catat SATU penandaan selesai Daily Reminder pada [epochDay]
      * pukul [atMillis]: DITAMBAHKAN ke daftar hari itu (tidak menimpa, tidak
      * ter-reset oleh bunyi berikutnya), dan doneDates TIDAK disentuh.
+     * RONDE 10 — tampilan & log DIPANGKAS ke penandaan TERAKHIR saja
+     * (Rama: daftar lengkap "menuh-menuhin"): penandaan baru MENIMPA
+     * daftar hari itu dengan satu entri terbaru; hari-hari lama yang
+     * masih berisi banyak entri tetap terbaca, tapi tampilan hanya
+     * memakai entri terakhir (lihat [dailyCompletionTimes]).
      */
     fun withDailyCompletion(epochDay: Long, atMillis: Long = System.currentTimeMillis()): ActivityEntity {
         val byDay = dailyDoneLog.split(";").mapNotNull { entry ->
@@ -152,8 +162,8 @@ data class ActivityEntity(
                 d to bits[1].split(",").mapNotNull { it.trim().toLongOrNull() }.toMutableList()
             }
         }.toMap().toMutableMap()
-        val list = byDay.getOrPut(epochDay) { mutableListOf() }
-        list.add(atMillis); list.sort()
+        // RONDE 10: hanya penandaan terbaru yang disimpan untuk hari itu.
+        byDay[epochDay] = mutableListOf(atMillis)
         val encoded = byDay.entries.sortedBy { it.key }
             .joinToString(";") { (d, times) -> "$d:${times.joinToString(",")}" }
         return copy(dailyDoneLog = encoded)

@@ -13,8 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -145,6 +151,49 @@ fun annotatedWithPriority(prefix: String, priority: String, suffix: String = "")
         pop()
         append(suffix)
     }
+
+/**
+ * RONDE 10 — pill prioritas untuk card "Kegiatan Hari Ini": bentuknya
+ * PERSIS label kategori ([CategoryPill]: latar warna 18% + teks versi
+ * gelapnya), tapi dengan efek FADE IN & OUT — opacity berdenyut halus
+ * berulang (bukan kedip kasar), supaya prioritas terasa "hidup" tanpa
+ * mengganggu. Teks HANYA "Rendah"/"Sedang"/"Tinggi" (tanpa kata
+ * "Prioritas"). Warna mengikuti pemetaan tetap ([priorityColor]).
+ * Bila animator sistem mati (reduce motion), pill tampil statis.
+ */
+@Composable
+fun PriorityFadePill(priority: String) {
+    val color = priorityColor(priority)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val animatorScale = try {
+        android.provider.Settings.Global.getFloat(
+            context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f
+        )
+    } catch (e: Exception) { 1f }
+    val alpha: Float = if (animatorScale == 0f) {
+        1f
+    } else {
+        val transition = rememberInfiniteTransition(label = "priorityFade")
+        val animated by transition.animateFloat(
+            initialValue = 1f, targetValue = 0.45f, label = "priorityFadeAlpha",
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1400),
+                repeatMode = RepeatMode.Reverse
+            )
+        )
+        animated
+    }
+    Box(
+        modifier = Modifier.clip(RoundedCornerShape(20.dp))
+            .background(color.copy(alpha = 0.18f * alpha + 0.06f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(
+            priority, color = darkenColor(color).copy(alpha = 0.55f + 0.45f * alpha),
+            fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1
+        )
+    }
+}
 
 /** 6 gradasi avatar dari mockup Profil. */
 val AvatarGradients: List<List<Color>> = listOf(
