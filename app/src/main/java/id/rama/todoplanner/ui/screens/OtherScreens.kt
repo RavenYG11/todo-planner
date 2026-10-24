@@ -522,7 +522,7 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
                 // RONDE 9 (amendemen 6, koreksi auditor): setting ini harus
                 // punya preset + warna manual seperti form poin 4 — bukan
                 // hanya deretan preset. ColorPickerSection lengkap dipakai
-                // (preset + circle color wheel ronde 10); tombol kembalinya
+                // (preset + picker kotak ronde 11); tombol kembalinya
                 // berarti "kembali ke hijau default", bukan "ikuti kategori".
                 id.rama.todoplanner.ui.components.ColorPickerSection(
                     selectedHex = if (profile.dailyReminderColorHex.isBlank()) "#22714F"
@@ -540,7 +540,7 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
         SoftCard(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text("Tentang", fontWeight = FontWeight.Bold, color = Ink)
-                Text("Todo Planner v1.0.8 — full lokal & offline.")
+                Text("Todo Planner v1.0.9 — full lokal & offline.")
             }
         }
     }

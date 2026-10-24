@@ -1569,3 +1569,75 @@ identik karena memakai komponen yang sama.
   + badging + isi zip. Perilaku runtime ronde 10 (wheel di HP, denyut
   pill, glow yang tampak di foto, tampil jam terakhir saja) terbukti
   lewat uji HP Rama berikutnya.
+
+## Perbaikan Ronde 11 — Uji HP v1.0.8 (#96, 24 Okt 2026)
+
+1. **Pill prioritas card "Kegiatan Hari Ini" (3 perubahan sekaligus).**
+   - POSISI: pill pindah ke baris judul, SEJAJAR di samping kanan label
+     kategori (judul + pill kategori + pill prioritas satu baris) — bukan
+     lagi baris sendiri di bawah baris waktu (sumber keluhan Rama di
+     screenshot uji11: pill "Sedang"/"Tinggi" tampil di baris bawah).
+   - WARNA LEBIH TERANG: latar pill lama (18%, disamakan label kategori)
+     membuat pill tampak redup; kini latar hampir penuh (alpha 0.92) +
+     teks putih tebal + bayangan neon warna prioritas — jelas lebih
+     terang dari label kategori di sebelahnya.
+   - EFEK: fade in & out ronde 10 DICABUT, diganti NEON FLICKER speed 1x
+     (siklus 1000 ms: terang penuh diselingi dip singkat ala lampu neon).
+   Komponen lama `PriorityFadePill` diganti `PriorityNeonPill`; teks tetap
+   hanya "Rendah"/"Sedang"/"Tinggi" (tanpa kata "Prioritas"); warna tetap
+   pemetaan ronde 9 (hijau/biru/merah); reduce-motion = statis terang.
+2. **Glow dot Schedule Warning lebih terang.** Bentuk expanding glow ronde
+   8/10 sudah dinilai bagus oleh Rama, tapi warnanya kurang menyala:
+   halo 0.22 -> 0.45, cincin penuh 1.0 & tebal 2.5 -> 3 dp (halo statis
+   reduce-motion ikut 0.28 -> 0.45). Komponen sama (`ExpandingGlowCategoryDot`)
+   dipakai semua baris Todo Utama, jadi tetap konsisten.
+3. **Color picker DIGANTI LAGI (ronde 10 -> ronde 11).** Circle wheel ronde
+   10 DIHAPUS TOTAL (`CircleColorWheel` + `WheelGeometry` hilang dari
+   `ColorPicker.kt`, grep = 0). Pengganti persis gambar referensi Rama:
+   picker KOTAK (`RectColorPicker`) — kotak saturasi/value besar +
+   slider hue horizontal + tampilan hex & RGB (tampil saja, bukan input).
+   Pemilihan berlaku langsung saat ketuk/geser, tanpa tombol apply.
+   Perilaku pemicu DIBALIK dari ronde 10: klik preset = langsung pilih
+   (picker TIDAK PERNAH muncul karena klik preset); picker hanya dibuka
+   oleh 1 swatch MIX WARNA baru (lingkaran pelangi) di ujung deretan
+   preset — swatch itu mendapat bingkai tebal bila warna terpilih adalah
+   custom (bukan preset). Tombol "Ikuti warna kategori" / "Kembali ke
+   hijau default" tetap ada dan menutup picker. Berlaku juga untuk setting
+   warna label Daily Reminder di Pengaturan (komponen yang sama).
+4. **Ritual auto-uncheck di setengah countdown.** Lingkaran checklist card
+   Ritual dulu bertahan ceklis seharian penuh setelah "Tandai Selesai"
+   walau reminder terus berdering tiap interval. Kini ceklis hanya hidup
+   selama (sekarang - terakhir ditandai) < interval/2, lalu OTOMATIS
+   UNCHECK — contoh Rama: interval 30 detik -> uncheck di detik ke-15.
+   Bunyi berikutnya tetap interval penuh; belum pernah ditandai =
+   uncheck; interval kosong = fallback perilaku lama. Baris Ritual sudah
+   me-recompose tiap detik (untuk countdown), jadi uncheck terjadi
+   tepat waktu tanpa timer tambahan.
+5. **Header interval form dihapus.** Blok "✨ Daily Reminder — Interval
+   Pengulangan" + paragraf penjelasnya DIHAPUS dari section interval di
+   form Tambah/Edit (sesuai crop yang dikirim Rama); kontrol interval
+   (nilai, satuan Detik/Menit/Jam, preset) tetap ada & berfungsi.
+   Variabel `windowLabel` yang hanya dipakai paragraf itu ikut dibersihkan.
+   (Interpretasi: yang dihapus = header di FORM, bukan section "Daily
+   Reminder Hari Ini" di layar Harian — Rama bisa koreksi bila lain.)
+
+### Hasil build ronde 11
+
+- **Status: BUILD SUCCESSFUL** (clean assembleDebug, Gradle 8.7 offline,
+  `keystore.properties` ADA -> signing permanen); hanya warning
+  deprecation lama.
+- **GERBANG LOLOS:** `apksigner verify --print-certs` -> Signer #1
+  SHA-256 digest =
+  `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+  — SAMA PERSIS dengan keystore permanen -> update timpa di atas v1.0.8
+  aman.
+- Terverifikasi: package `id.rama.todoplanner` versionCode **10** /
+  versionName **1.0.9**, minSdk 26, targetSdk 34; permission tetap
+  **TANPA INTERNET**; DB tetap versi 5 (tanpa migrasi);
+  `ReminderSoundPlayer.kt` identik byte-per-byte dengan v1.0.3 (sha256
+  `9441d784fde596fa8f1a3966a391aa76e01efe1dbe41b271f16de31c2138bc7e`)
+  — getar tetap dibekukan.
+- **Catatan jujur:** verifikasi di VM sebatas compile + signature +
+  badging + isi zip. Perilaku runtime ronde 11 (posisi & flicker pill,
+  terang glow, picker kotak via swatch mix, uncheck setengah countdown)
+  terbukti lewat uji HP Rama berikutnya.

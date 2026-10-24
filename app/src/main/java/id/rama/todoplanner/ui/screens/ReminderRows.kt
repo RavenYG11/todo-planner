@@ -111,21 +111,24 @@ fun ExpandingGlowCategoryDot(color: Color) {
     }
     Box(modifier = Modifier.padding(top = 2.dp).size(30.dp), contentAlignment = Alignment.Center) {
         if (reduceMotion) {
-            // Halo statis lembut, tanpa gerak.
+            // Halo statis, tanpa gerak (tetap terang seperti versi animasi).
             Box(
                 modifier = Modifier.size(18.dp).clip(CircleShape)
-                    .background(color.copy(alpha = 0.28f))
+                    .background(color.copy(alpha = 0.45f))
             )
         } else {
             // RONDE 10: glow DIPERKUAT supaya benar-benar terlihat (Rama:
             // dot card Schedule Warning "kurang Glow") — cincin lebih
             // tebal & lebih pekat + halo lembut yang ikut mengembang.
+            // RONDE 11: WARNA glow dinaikkan lagi (Rama: bentuk sudah
+            // bagus, warna kurang terang) — halo 0.22 -> 0.45, cincin
+            // penuh 1.0 & lebih tebal 3 dp, supaya benar-benar menyala.
             // Cincin mengembang 10 -> 30 dp sambil memudar ke transparan.
             val ringSize = (10f + progress * 20f).dp
             Box(
                 modifier = Modifier.size(ringSize).clip(CircleShape)
-                    .background(color.copy(alpha = (1f - progress) * 0.22f))
-                    .border(2.5.dp, color.copy(alpha = (1f - progress) * 0.9f), CircleShape)
+                    .background(color.copy(alpha = (1f - progress) * 0.45f))
+                    .border(3.dp, color.copy(alpha = (1f - progress) * 1f), CircleShape)
             )
         }
         // Dot diam di tengah — tidak pernah diskala.
@@ -233,9 +236,10 @@ fun formatCountdown(trigger: LocalDateTime, now: LocalDateTime, today: LocalDate
  *    detik oleh loop lokal baris ini — bukan tick 30 detik Beranda —
  *    supaya "W dtk lagi" benar-benar bergerak).
  *  - Logo ✨ DIGANTI lingkaran checklist (seperti Todo Utama): lingkaran
- *    terisi hijau + ✓ bila hari ini sudah pernah ditandai; KLIK lingkaran
- *    membuka MENU AKSI yang sama seperti Todo Utama di Detail:
- *    Edit, Hapus (dengan konfirmasi), Tandai Selesai.
+ *    terisi hijau + ✓ hanya selama (sekarang - terakhir ditandai) <
+ *    interval/2 (RONDE 11: auto-uncheck di setengah countdown), lalu
+ *    kembali kosong; KLIK lingkaran membuka MENU AKSI yang sama seperti
+ *    Todo Utama di Detail: Edit, Hapus (dengan konfirmasi), Tandai Selesai.
  *  - Subline tetap: interval • kategori • terakhir ditandai (tanpa ✨
  *    di ekor subline — logo sparkles card ini sudah diganti lingkaran;
  *    ✨ di Schedule Warning/Detail/lainnya tidak berubah).
@@ -257,7 +261,21 @@ fun RitualRow(
     LaunchedEffect(Unit) { while (true) { now = LocalDateTime.now(); delay(1_000) } }
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    val markedToday = activity.lastDailyCompletion(today.toEpochDay()) != null
+    // RONDE 11 — ceklis Ritual TIDAK LAGI bertahan seharian penuh:
+    // ceklis hanya hidup selama (sekarang - terakhir ditandai) <
+    // interval/2, lalu OTOMATIS UNCHECK — contoh Rama: interval 30 dtk
+    // -> uncheck di dtk ke-15. Bunyi berikutnya tetap interval penuh;
+    // belum pernah ditandai hari ini = uncheck. Baris ini me-recompose
+    // tiap detik (loop di atas), jadi uncheck terjadi tepat waktu.
+    // Interval kosong/tidak valid = fallback perilaku lama (ceklis bila
+    // hari ini pernah ditandai).
+    val lastMs = activity.lastDailyCompletion(today.toEpochDay())
+    val intervalMs = activity.intervalMillis()
+    val markedToday = if (lastMs != null && intervalMs != null && intervalMs > 0) {
+        (System.currentTimeMillis() - lastMs) < intervalMs / 2
+    } else {
+        lastMs != null
+    }
     val last = activity.lastDailyCompletion(date.toEpochDay())
 
     Row(

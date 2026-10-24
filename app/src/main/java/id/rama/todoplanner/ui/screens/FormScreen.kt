@@ -164,13 +164,9 @@ fun FormScreen(
     // RONDE 6 — logo emoji kegiatan ("" = tanpa logo).
     var iconEmoji by remember(editId) { mutableStateOf(existing?.iconEmoji ?: "") }
     var titleError by remember { mutableStateOf(false) }
-    // RONDE 6 — jendela hari aktif user (untuk teks bantuan Daily Reminder).
-    val formContext = LocalContext.current
-    val prefs = remember { AppPrefs(formContext) }
-    val windowLabel = "%02d.%02d–%02d.%02d".format(
-        prefs.dayStartMinutes / 60, prefs.dayStartMinutes % 60,
-        prefs.dayEndMinutes / 60, prefs.dayEndMinutes % 60
-    )
+    // RONDE 11: jendela hari aktif dihapus dari sini bersama paragraf
+    // penjelasan interval (header Daily Reminder dihapus perintah Rama) —
+    // kontrol interval di bawah tetap ada & berfungsi.
     var showDatePicker by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf<String?>(null) } // "start" | "end"
 
@@ -276,11 +272,9 @@ fun FormScreen(
         // Pola hari pengulangan (chip "Ulangi" di atas) tetap dipertahankan.
         val isChecklistForm = startMin == null
         if (isChecklistForm) {
-            Text("✨ Daily Reminder — Interval Pengulangan", fontWeight = FontWeight.Bold)
-            Text(
-                "Berbunyi berulang tiap interval pukul $windowLabel. Ditandai selesai ✨ = jam terakhir tersimpan + timer reset (bunyi lagi setelah +interval).",
-                fontSize = 12.sp, color = Color(0xFF70858E)
-            )
+            // RONDE 11: blok header "✨ Daily Reminder — Interval
+            // Pengulangan" + paragraf penjelasnya DIHAPUS atas perintah
+            // Rama — kontrol interval di bawah tetap ada & berfungsi.
             Row(
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 modifier = Modifier.padding(vertical = 4.dp)
@@ -359,7 +353,7 @@ fun FormScreen(
             if (!colorCustom) colorHex = categoryHex(it)
         }
         // RONDE 9 — section "Pilih Warna" (tepat di bawah Kategori):
-        // preset + circle color wheel (ronde 10); warna ini dipakai untuk WARNA KATEGORI
+        // preset + swatch mix + picker kotak (ronde 11); warna ini dipakai untuk WARNA KATEGORI
         // + LABEL KATEGORI (pill) di card-card Todo Utama. Daily Reminder
         // tidak wajib mengikutinya. "Ikuti warna kategori" mengembalikan
         // ke default (disimpan null = ikut kategori).
