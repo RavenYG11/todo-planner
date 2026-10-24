@@ -1315,7 +1315,7 @@ berubah), nilai Prioritas di Detail (teks tebal berwarna).
   assembleDebug`, keystore.properties ADA → signing permanen).
 - **APK:** `app/build/outputs/apk/debug/app-debug.apk` —
   **17.067.516 byte**, sha256
-  `c05506eb4f708d87153624041c00933bbc618c537add99587db456739dd7f089`;
+  `1446fb2192db2364f51bc7a96bca30a4f60d7f0654d0da329c24b29f6836a6da`;
   salinan staging `../TodoPlanner-debug.apk` ditimpa (hash sama,
   diverifikasi ulang setelah clean build).
 - **GERBANG LOLOS:** `apksigner verify --print-certs` → Signer #1
@@ -1340,3 +1340,232 @@ berubah), nilai Prioritas di Detail (teks tebal berwarna).
   amendemen, melengkapi 3 celah (warna prioritas di Detail, palette
   manual di setting warna label, bab README ini), lalu clean build
   pembuktian.
+
+## Perbaikan Ronde 10 — Uji HP v1.0.7 (#95, 24 Okt 2026)
+
+### 1. Daily Reminder: HANYA jam terakhir ditandai selesai
+Rama menilai daftar lengkap penandaan ("15:22 • 15:22 • 15:22 • 15:25
+• 15:25") menuh-menuhin. Aturan daftar-lengkap ronde 7 DIGANTI:
+- Tampilan di SEMUA tempat kini hanya **"Terakhir ditandai: HH:mm"**:
+  baris Daily Reminder di `ActivityRow` (Harian/Kalender), baris
+  CompactRow Template Harian, dan Detail ("Terakhir ditandai").
+- Log internal dipangkas: `withDailyCompletion()` kini MENIMPA daftar
+  hari itu dengan satu entri terbaru (bukan menambah). Entri hari lama
+  yang masih berisi banyak waktu tetap terbaca, tapi tampilan hanya
+  memakai entri terakhir (`dailyCompletionTimes().last()`); jangkar
+  reset timer (`lastDailyCompletion`) tidak berubah perilakunya.
+- Subline Ritual ("terakhir ditandai …") sudah last-only sejak ronde 9
+  dan tidak diubah.
+
+### 2. KOREKSI color picker: circle wheel, bukan palette + tombol
+Rama mengoreksi ronde 9: yang diminta adalah **circle color picker**
+(seperti gambar referensi yang dikirimnya), pemilihannya berdasarkan
+KLIK — bukan slider palette + kolom hex + tombol apply.
+- DIHAPUS total dari `ColorPickerSection`: slider "Warna bebas
+  (palette)", kolom input hex, tombol "Pakai hex", tombol "Pakai
+  warna ini".
+- PENGGANTI: `CircleColorWheel` di `ui/components/ColorPicker.kt` —
+  cincin hue melingkar di luar + kotak saturasi/value di tengah,
+  masing-masing dengan indikator posisi (lingkaran warna terpilih
+  berbingkai putih di cincin, lingkaran kecil berbingkai putih di
+  kotak). Wheel HANYA MUNCUL setelah sebuah preset diklik; sebelum itu
+  form hanya menampilkan deretan preset + tombol reset.
+- Klik preset = warna itu LANGSUNG terpilih SEKALIGUS membuka wheel
+  untuk fine-tuning. Setiap ketuk/geser di wheel langsung berlaku
+  (tanpa tombol apply): geser cincin = hue (S/V tetap), geser kotak =
+  saturasi/value (hue tetap). Loop pointer mentah (down + gerak, tanpa
+  menunggu ambang drag) supaya ketuk langsung melompat dan geser
+  mengalir; warna dibaca lewat `rememberUpdatedState` agar gestur
+  tidak dibatalkan recomposition.
+- Wheel tidak menyimpan state warna sendiri — ia menggambar dari warna
+  terpilih saat ini dan melaporkan tiap ketuk/geser; parent yang
+  menyimpan pilihan (hex). Tombol reset ("Ikuti warna kategori" /
+  "Kembali ke hijau default") tetap ada dan menutup wheel.
+- Berlaku juga untuk setting warna label Daily Reminder di Pengaturan
+  (memakai `ColorPickerSection` yang sama).
+
+### 3. Pill prioritas di card "Kegiatan Hari Ini": label berlatar + fade
+Subline `UpcomingItem` (card Beranda "Kegiatan Hari Ini") tidak lagi
+menampilkan teks polos "Prioritas Sedang/Tinggi":
+- Prioritas kini tampil sebagai **LABEL berlatar persis label kategori**
+  (`CategoryPill`: latar warna 18% + teks versi gelapnya) lewat
+  komponen baru `PriorityFadePill` di `Common.kt`.
+- Efek tambahan: **FADE IN & OUT** — opacity label berdenyut halus
+  berulang (transisi infinite 1400 ms, reverse), bukan kedip kasar;
+  bila animator sistem mati (reduce motion), pill tampil statis.
+- Teks HANYA "Rendah"/"Sedang"/"Tinggi" (tanpa kata "Prioritas").
+  Warna tetap pemetaan ronde 9 (Rendah hijau / Sedang biru / Tinggi
+  merah), terpisah dari warna custom kategori. Cakupan sesuai
+  instruksi: HANYA card "Kegiatan Hari Ini" — teks "Prioritas X" di
+  `ActivityRow` (Harian/Kalender) dan label "Prioritas" di Detail
+  tidak diubah.
+
+### 4. Rename global: "Bunyi berikutnya" → "Reminder Berikutnya"
+Semua string UI "Bunyi berikutnya" diganti "Reminder Berikutnya":
+baris Daily Reminder `ActivityRow`, baris CompactRow Template Harian,
+dan label Detail. Grep `Bunyi berikutnya` di `app/src` = NIHIL
+(komentar penjelas huruf kecil "bunyi berikutnya" di beberapa file
+bukan string UI dan dibiarkan).
+
+### 5. Dot card Schedule Warning diberi expanding glow
+Kartu Beranda "Schedule Warning" memakai `NextReminderRow` yang
+sebenarnya sudah memakai `ExpandingGlowCategoryDot` — tapi ring-nya
+terlalu samar (alpha maks 0,6, tanpa halo) sehingga di mata Rama
+dot-nya "kurang Glow". Glow DIPERKUAT di komponen yang sama (dipakai
+juga baris Todo Utama lain, jadi tetap konsisten): border cincin
+2,5 dp dengan alpha maks 0,9 + halo lembut yang ikut mengembang
+(alpha 0,22) di belakang dot. Dot tetap diam; cincin mengembang
+10→30 dp lalu memudar, siklus 2 detik; reduce-motion = halo statis.
+
+### Hasil build ronde 10
+- **Status: BUILD SUCCESSFUL** (Gradle 8.7 offline, `clean
+  assembleDebug`, keystore.properties ADA → signing permanen).
+- **APK:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **17.067.516 byte**, sha256
+  `159e7ea59b3604e1411a31e8aa12d22f2772fb1623e433c72a09dce20a998323`;
+  salinan staging `../TodoPlanner-debug.apk` ditimpa (hash sama,
+  diverifikasi ulang setelah clean build).
+- **GERBANG LOLOS:** `apksigner verify --print-certs` → Signer #1
+  SHA-256 digest =
+  `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+  — SAMA PERSIS dengan keystore permanen → update timpa di atas v1.0.7
+  aman.
+- Terverifikasi: package `id.rama.todoplanner` versionCode **9** /
+  versionName **1.0.8**, minSdk 26, targetSdk 34; permission tetap
+  **TANPA INTERNET**; zip 157 entri, testzip bersih; TANPA migrasi
+  Room baru (DB tetap v5 dari ronde 9 — ronde 10 tidak menambah kolom);
+  `ReminderSoundPlayer.kt` identik byte-per-byte dengan v1.0.3 (sha256
+  `9441d784fde596fa8f1a3966a391aa76e01efe1dbe41b271f16de31c2138bc7e`)
+  — getar tetap dibekukan.
+- **Catatan jujur:** verifikasi di VM sebatas compile + signature +
+  badging + isi dex. Perilaku runtime ronde 10 (tampilan jam terakhir
+  saja, wheel warna, pill prioritas fade, rename, glow Schedule
+  Warning) terbukti lewat uji HP Rama berikutnya.
+- **Catatan proses:** seperti ronde 6–9, sebagian implementasi ronde 10
+  sudah diterapkan penulis paralel sebelum koordinator menulis kode
+  (khususnya `CircleColorWheel` + bump versi); koordinator mengaudit
+  baris-per-baris terhadap instruksi #95, menerapkan sendiri item 1,
+  3, 4, 5 + memperkuat glow, merapikan 2 komentar usang, menulis bab
+  README ini, lalu clean build pembuktian.
+
+## Perbaikan Ronde 10 — Uji HP v1.0.7 (#95, 24 Okt 2026)
+
+TANPA QA (perintah assignment). Getar tetap DIBEKUKAN — tidak ada
+file/jalur getar yang disentuh. TIDAK ada migrasi Room baru (DB tetap
+versi 5): format `dailyDoneLog` tidak berubah, hanya isinya yang kini
+satu entri terakhir per hari — format itu subset valid dari format
+lama, jadi backup JSON lama tetap kompatibel (multi-entri lama tetap
+terbaca, lalu dipangkas di sisi baca ke yang terakhir).
+
+### 1. Daily Reminder — HANYA jam terakhir ditandai selesai
+Menggantikan aturan tampil-daftar-lengkap ronde 7 (yang dinilai
+menuh-menuhin, mis. "15:22 • 15:22 • 15:25"):
+- `Entities.dailyCompletionTimes()` (RONDE 10): data lama multi-entri
+  dipangkas DI SISI BACA — hanya timestamp terbesar (terakhir) per hari
+  yang dikembalikan (list maksimal satu elemen, supaya pemanggil lama
+  `isNotEmpty` / `last` tidak berubah).
+- `Entities.withDailyCompletion()`: penandaan baru MENIMPA entri hari
+  itu (satu hari = satu penandaan terakhir); entri hari lain tetap
+  dipertahankan (Detail tanggal lampau tetap menampilkan jam
+  terakhirnya). `doneDates` tidak disentuh.
+- Tampilan di SEMUA tempat kini "Terakhir ditandai: HH:mm":
+  `ActivityRow` (Harian), `CompactRow` di `TemplateScreens`, dan
+  Detail (label baris menjadi "Terakhir ditandai"). Perhitungan bunyi
+  berikutnya tetap dari penandaan terakhir (jangkar reset tidak berubah).
+
+### 2. KOREKSI color picker — circle wheel, bukan palette
+`ui/components/ColorPicker.kt` ditulis ulang (komponen baru
+`CircleColorWheel`, dipakai `ColorPickerSection` yang sama di Form dan
+Pengaturan warna label — signature pemanggil TIDAK berubah):
+- DIHAPUS total dari form: section palette (slider), input kode hex +
+  tombol apply-nya, dan tombol apply warna slider. Grep string UI lama
+  itu kini nihil di `app/src/`.
+- PENGGANTI persis gambar referensi Rama (`feedback/uji10-color-wheel.jpg`):
+  cincin hue melingkar di luar (tebal 19% diameter) + kotak
+  saturasi/value di tengah, dengan indikator posisi di keduanya
+  (lingkaran warna terpilih berbingkai putih di cincin, lingkaran kecil
+  berbingkai putih di kotak). Pemetaan sudut: atas = merah, kanan =
+  ungu/biru, bawah = cyan, kiri = kuning (hue = (360 - sudut dari
+  atas) % 360; gradasi sweep berjalan searah jarum jam dari timur).
+- Wheel MUNCUL hanya saat user mengklik salah satu preset warna
+  (`wheelVisible`): klik preset = pilih warna itu SEKALIGUS membuka
+  wheel untuk fine-tuning.
+- Pemilihan berlaku LANGSUNG saat ketuk/geser di wheel — TANPA tombol
+  apply. Geser cincin mengubah hue (saturasi/value tetap); geser kotak
+  mengubah saturasi/value (hue tetap). Loop pointer mentah (down +
+  gerak, tanpa ambang drag) supaya ketuk langsung melompat dan geser
+  mengalir; warna terbaru dibaca lewat `rememberUpdatedState` agar
+  gestur berjalan tidak dibatalkan recomposition dan tidak memakai hue
+  basi. Wheel tidak menyimpan state warna sendiri — selalu menggambar
+  dari warna terpilih dan melaporkannya ke parent (hex), jadi tidak ada
+  state ganda yang bisa beradu.
+- Tombol reset TETAP: "Ikuti warna kategori" (Form) / "Kembali ke hijau
+  default" (Pengaturan); menekannya juga menutup wheel.
+- Catatan build: satu error compile sempat muncul — import
+  `awaitPointerEventScope` sebagai top-level tidak dikenali di Compose
+  1.7 proyek ini karena ia fungsi member `PointerInputScope`; perbaikan
+  = hapus import itu, pemanggilan sebagai member tetap sah.
+
+### 3. Pill prioritas di card "Kegiatan Hari Ini"
+`UpcomingItem` (HomeScreen, satu-satunya pemakai baris ini) tidak lagi
+menampilkan teks polos "Prioritas X": kini memakai `PriorityFadePill`
+(`Common.kt`) — bentuk PERSIS label kategori (`CategoryPill`: radius
+20dp, padding 8x3dp, latar warna 18% + teks versi gelapnya, 10.5sp
+tebal) dengan warna prioritas tetap (Rendah hijau / Sedang biru /
+Tinggi merah) + efek FADE IN & OUT (opacity 1.0 <-> 0.45, siklus
+1,4 detik, mode Reverse, berulang; statis bila animator sistem mati).
+Teks pill HANYA "Rendah"/"Sedang"/"Tinggi" — tanpa kata "Prioritas".
+`ActivityRow` (layar Harian, komponen berbeda) tidak diubah — perintah
+ini melingkupi card Kegiatan Hari Ini dan baris yang sama bila dipakai
+ulang, dan baris itu hanya dipakai card tersebut.
+
+### 4. Rename global "Bunyi berikutnya" -> "Reminder Berikutnya"
+Tiga tempat tampil diubah (`ActivityRow`, `TemplateScreens`,
+`DetailScreen`); grep case-sensitive "Bunyi berikutnya" di `app/src/`
+kini NIHIL. (Komentar kode huruf kecil "bunyi berikutnya" bukan string
+UI dan tidak diubah.)
+
+### 5. Dot Schedule Warning — glow diperkuat
+Temuan audit (akar masalah, bukan gejala): dot card Schedule Warning
+Beranda ternyata SUDAH memakai komponen glow yang sama dengan dot Todo
+Utama (`ExpandingGlowCategoryDot` lewat `NextReminderRow` bersama) —
+tetapi cincinnya hanya border yang memudar hingga transparan di akhir
+siklus, sehingga di foto tampak polos. Perbaikan di komponen BERSAMA
+itu (bukan dot kedua yang menyimpang): cincin lebih tebal (2.5dp) &
+lebih pekat (alpha awal 0.9) DITAMBAH halo isi lembut (alpha awal 0.22)
+yang ikut mengembang 10 -> 30dp lalu memudar — glow kini terbaca di
+setiap fase siklus, dan dot Todo Utama & Schedule Warning tetap
+identik karena memakai komponen yang sama.
+
+### Hasil build ronde 10
+- **Status: BUILD SUCCESSFUL** (Gradle 8.7 offline, `clean
+  assembleDebug`, keystore.properties ADA → signing permanen).
+- **APK:** `app/build/outputs/apk/debug/app-debug.apk` —
+  **17.067.516 byte** (kebetulan persis sama dengan v1.0.7, tetapi hash
+  BERBEDA — build baru terverifikasi), sha256
+  `9fcd1289bb9a5586317477b3c6b2a6a2a41a129af6bf34e012e92d2223aeef4b`;
+  salinan staging `../TodoPlanner-debug.apk` ditimpa (hash sama,
+  diverifikasi ulang setelah build).
+- **GERBANG LOLOS:** `apksigner verify --print-certs` → Signer #1
+  SHA-256 digest =
+  `028531fbd84626544b825ce83fe1e9b05d7ced746637393a0313327af29fc090`
+  — SAMA PERSIS dengan keystore permanen → update timpa di atas v1.0.7
+  aman.
+- Terverifikasi: package `id.rama.todoplanner` versionCode **9** /
+  versionName **1.0.8**, minSdk 26, targetSdk 34; permission tetap
+  **TANPA INTERNET**; zip 157 entri, testzip bersih; DB tetap versi 5
+  (tanpa migrasi); `ReminderSoundPlayer.kt` identik byte-per-byte
+  dengan v1.0.3 (sha256
+  `9441d784fde596fa8f1a3966a391aa76e01efe1dbe41b271f16de31c2138bc7e`,
+  sama dengan yang tercatat di bab ronde 9) — getar tetap dibekukan.
+- **Catatan jujur:** seperti ronde 9, sebagian implementasi ronde 10
+  sudah diterapkan penulis paralel di working tree sebelum koordinator
+  menulis kode (item 1 + 4, komponen `PriorityFadePill`, dan penguatan
+  glow); koordinator mengaudit baris-per-baris terhadap instruksi #95,
+  melengkapi celah yang tersisa (sisi baca pemangkasan log, wiring pill
+  di `UpcomingItem`, penulisan ulang `ColorPicker.kt` menjadi circle
+  wheel, bump versi 9/1.0.8 + label Tentang, bab README ini), lalu
+  clean build pembuktian. Verifikasi di VM sebatas compile + signature
+  + badging + isi zip. Perilaku runtime ronde 10 (wheel di HP, denyut
+  pill, glow yang tampak di foto, tampil jam terakhir saja) terbukti
+  lewat uji HP Rama berikutnya.

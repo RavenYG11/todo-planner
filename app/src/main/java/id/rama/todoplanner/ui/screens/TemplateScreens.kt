@@ -152,14 +152,16 @@ private fun CompactRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick
                 }
             }
             if (isDaily && dailyTimes.isNotEmpty()) {
+                // RONDE 10: HANYA jam terakhir ditandai selesai
+                // (daftar lengkap ronde 7 dinilai menuh-menuhin).
                 Text(
-                    "✨ Ditandai selesai: " + dailyTimes.joinToString(" • ") { Dates.formatCompletedTime(it) },
+                    "Terakhir ditandai: " + Dates.formatCompletedTime(dailyTimes.last()),
                     fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep,
                     modifier = Modifier.padding(top = 3.dp)
                 )
                 val nextMs = dailyTimes.last() + (occ.activity.intervalMillis() ?: 0L)
                 Text(
-                    "Bunyi berikutnya: " + Dates.formatCompletedTime(nextMs) + " • tiap ${occ.activity.intervalLabel()}",
+                    "Reminder Berikutnya: " + Dates.formatCompletedTime(nextMs) + " • tiap ${occ.activity.intervalLabel()}",
                     fontSize = 12.sp, color = Color(0xFF22714F)
                 )
             } else if (isDaily) {

@@ -117,11 +117,15 @@ fun ExpandingGlowCategoryDot(color: Color) {
                     .background(color.copy(alpha = 0.28f))
             )
         } else {
+            // RONDE 10: glow DIPERKUAT supaya benar-benar terlihat (Rama:
+            // dot card Schedule Warning "kurang Glow") — cincin lebih
+            // tebal & lebih pekat + halo lembut yang ikut mengembang.
             // Cincin mengembang 10 -> 30 dp sambil memudar ke transparan.
             val ringSize = (10f + progress * 20f).dp
             Box(
                 modifier = Modifier.size(ringSize).clip(CircleShape)
-                    .border(2.dp, color.copy(alpha = (1f - progress) * 0.6f), CircleShape)
+                    .background(color.copy(alpha = (1f - progress) * 0.22f))
+                    .border(2.5.dp, color.copy(alpha = (1f - progress) * 0.9f), CircleShape)
             )
         }
         // Dot diam di tengah — tidak pernah diskala.

@@ -54,6 +54,7 @@ import id.rama.todoplanner.ui.components.activityColor
 import id.rama.todoplanner.ui.components.priorityColor
 import id.rama.todoplanner.ui.components.PhaseScenery
 import id.rama.todoplanner.ui.components.PastelPill
+import id.rama.todoplanner.ui.components.PriorityFadePill
 import id.rama.todoplanner.ui.components.RingProgress
 import id.rama.todoplanner.ui.components.SoftCard
 import id.rama.todoplanner.ui.theme.Ink
@@ -444,22 +445,21 @@ private fun UpcomingItem(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onCli
             } else {
                 Dates.formatTime(occ.activity.startMinutes)
             }
-            val subline = androidx.compose.ui.text.buildAnnotatedString {
-                append("$timeText • ${occ.activity.category} • ")
-                pushStyle(
-                    androidx.compose.ui.text.SpanStyle(
-                        color = priorityColor(occ.activity.priority),
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-                append("Prioritas ${occ.activity.priority}")
-                pop()
+            // RONDE 10: prioritas BUKAN lagi teks "Prioritas X" — jadi
+            // LABEL berlatar persis label kategori + efek FADE IN & OUT,
+            // teks hanya "Rendah"/"Sedang"/"Tinggi" (tanpa kata "Prioritas").
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("$timeText • ${occ.activity.category}", fontSize = 12.sp, color = Color(0xFF70858E))
+                Spacer(Modifier.width(6.dp))
+                PriorityFadePill(occ.activity.priority)
                 if (occ.done) {
                     val doneLabel = Dates.completedLabel(occ.completedAtMillis)
-                    if (doneLabel.isNotBlank()) append(" • $doneLabel")
+                    if (doneLabel.isNotBlank()) {
+                        Spacer(Modifier.width(6.dp))
+                        Text("• $doneLabel", fontSize = 12.sp, color = Color(0xFF70858E))
+                    }
                 }
             }
-            Text(subline, fontSize = 12.sp, color = Color(0xFF70858E))
         }
     }
 }
