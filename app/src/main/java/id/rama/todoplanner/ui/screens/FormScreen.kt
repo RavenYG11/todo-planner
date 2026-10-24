@@ -58,6 +58,16 @@ private val REPEAT_OPTIONS = listOf("NONE" to "Tidak", "DAILY" to "Harian", "WEE
 // defensif di bawah (tidak ada chip terpilih; user memilih ulang bila membuka form).
 private val REMINDER_OPTIONS = listOf<Int?>(null, 15, 60, 1440)
 private val REMINDER_LABELS = listOf("Tanpa", "15 mnt sebelum", "1 jam sebelum", "1 hari sebelum")
+// RONDE 5: preset interval checklist (nilai, kode satuan, label chip) + input angka bebas.
+private val INTERVAL_PRESETS = listOf(
+    Triple(30, "DETIK", "30 Detik"),
+    Triple(1, "MENIT", "1 Menit"),
+    Triple(5, "MENIT", "5 Menit"),
+    Triple(15, "MENIT", "15 Menit"),
+    Triple(30, "MENIT", "30 Menit"),
+    Triple(1, "JAM", "1 Jam"),
+    Triple(2, "JAM", "2 Jam")
+)
 private val TEMPLATE_OPTIONS = listOf("Harian", "Mingguan", "Bulanan", "Tahunan")
 private val PRIORITY_OPTIONS = listOf("Rendah", "Sedang", "Tinggi")
 
@@ -93,6 +103,10 @@ fun FormScreen(
     var template by remember(editId) { mutableStateOf(existing?.template ?: presetTemplate ?: "Harian") }
     var repeat by remember(editId) { mutableStateOf(existing?.repeatRule ?: "NONE") }
     var reminder by remember(editId) { mutableStateOf<Int?>(existing?.reminderMinutesBefore) }
+    // RONDE 5 — interval pengulangan checklist (hanya dipakai bila tanpa jam).
+    // Satuan disimpan sebagai kode entitas: "DETIK" | "MENIT" | "JAM".
+    var intervalValueText by remember(editId) { mutableStateOf(existing?.intervalValue?.toString() ?: "5") }
+    var intervalUnit by remember(editId) { mutableStateOf(existing?.intervalUnit ?: "MENIT") }
     // Mode nada per kegiatan (RONDE 3) — 3 keadaan yang TIDAK ambigu:
     //  "global"  = Ikuti global (ringtoneUri disimpan null)
     //  "default" = Bawaan HP (default) — sentinel AppPrefs.RINGTONE_DEFAULT,
@@ -125,7 +139,7 @@ fun FormScreen(
         "custom" -> toneUri
         else -> null
     }
-    val dirty = remember(title, date, startMin, endMin, template, repeat, reminder, savedToneUri, priority, category, note, existing) {
+    val dirty = remember(title, date, startMin, endMin, template, repeat, reminder, intervalValueText, intervalUnit, savedToneUri, priority, category, note, existing) {
         if (existing == null) {
             title.isNotBlank() || note.isNotBlank()
         } else {
@@ -133,6 +147,8 @@ fun FormScreen(
                 startMin != existing.startMinutes || endMin != existing.endMinutes ||
                 template != existing.template || repeat != existing.repeatRule ||
                 reminder != existing.reminderMinutesBefore || savedToneUri != existing.ringtoneUri ||
+                intervalValueText != (existing.intervalValue?.toString() ?: "5") ||
+                intervalUnit != (existing.intervalUnit ?: "MENIT") ||
                 priority != existing.priority || category != existing.category || note != existing.note
         }
     }
@@ -166,16 +182,63 @@ fun FormScreen(
         ChipRow(REPEAT_OPTIONS.map { it.second }, REPEAT_OPTIONS.first { it.first == repeat }.second, { Lavender }) { label ->
             repeat = REPEAT_OPTIONS.first { it.second == label }.first
         }
-        Text("Reminder", fontWeight = FontWeight.Bold)
-        val reminderIdx = REMINDER_OPTIONS.indexOf(reminder)
-        ChipRow(
-            REMINDER_LABELS,
-            if (reminderIdx >= 0) REMINDER_LABELS[reminderIdx] else "",
-            { AmberSoft }
-        ) { label ->
-            reminder = REMINDER_OPTIONS[REMINDER_LABELS.indexOf(label)]
+        // RONDE 5 — CHECKLIST (tanpa jam) dibedakan dari TODO UTAMA:
+        // opsi reminder "sebelum mulai" DIGANTI interval pengulangan 1 hari.
+        // Pola hari pengulangan (chip "Ulangi" di atas) tetap dipertahankan.
+        val isChecklistForm = startMin == null
+        if (isChecklistForm) {
+            Text("✓ Checklist — Interval Pengulangan", fontWeight = FontWeight.Bold)
+            Text(
+                "Berbunyi berulang tiap interval pukul 06.00–22.00, berhenti hari itu saat dicentang selesai.",
+                fontSize = 12.sp, color = Color(0xFF70858E)
+            )
+            Row(
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                modifier = Modifier.padding(vertical = 4.dp)
+            ) {
+                OutlinedTextField(
+                    value = intervalValueText,
+                    onValueChange = { intervalValueText = it.filter { ch -> ch.isDigit() }.take(4) },
+                    label = { Text("Nilai") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.padding(4.dp))
+                ChipRow(
+                    listOf("Detik", "Menit", "Jam"),
+                    when (intervalUnit) { "DETIK" -> "Detik"; "JAM" -> "Jam"; else -> "Menit" },
+                    { AmberSoft }
+                ) { label ->
+                    intervalUnit = when (label) { "Detik" -> "DETIK"; "Jam" -> "JAM"; else -> "MENIT" }
+                }
+            }
+            Text("Preset interval", fontSize = 12.sp, color = Color(0xFF70858E))
+            ChipRow(
+                INTERVAL_PRESETS.map { it.third },
+                INTERVAL_PRESETS.firstOrNull {
+                    it.first.toString() == intervalValueText && it.second == intervalUnit
+                }?.third ?: "",
+                { AmberSoft }
+            ) { label ->
+                val preset = INTERVAL_PRESETS.first { it.third == label }
+                intervalValueText = preset.first.toString()
+                intervalUnit = preset.second
+            }
+        } else {
+            Text("Reminder", fontWeight = FontWeight.Bold)
+            val reminderIdx = REMINDER_OPTIONS.indexOf(reminder)
+            ChipRow(
+                REMINDER_LABELS,
+                if (reminderIdx >= 0) REMINDER_LABELS[reminderIdx] else "",
+                { AmberSoft }
+            ) { label ->
+                reminder = REMINDER_OPTIONS[REMINDER_LABELS.indexOf(label)]
+            }
         }
-        if (reminder != null) {
+        if (reminder != null || isChecklistForm) {
             Text("Nada Dering", fontWeight = FontWeight.Bold)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -205,6 +268,9 @@ fun FormScreen(
             text = "💾 Simpan Kegiatan",
             onClick = {
                 if (title.isBlank()) { titleError = true; return@GradientButton }
+                // RONDE 5: checklist menyimpan interval (reminder "sebelum
+                // mulai" dikosongkan); todo utama menyimpan reminder seperti
+                // biasa dan interval dikosongkan — dua mode tidak tercampur.
                 val entity = (existing ?: ActivityEntity(title = "", dateEpochDay = date.toEpochDay())).copy(
                     title = title.trim(),
                     dateEpochDay = date.toEpochDay(),
@@ -212,7 +278,11 @@ fun FormScreen(
                     endMinutes = endMin,
                     template = template,
                     repeatRule = repeat,
-                    reminderMinutesBefore = reminder,
+                    reminderMinutesBefore = if (startMin == null) null else reminder,
+                    intervalValue = if (startMin == null) {
+                        intervalValueText.toIntOrNull()?.coerceAtLeast(1) ?: 5
+                    } else null,
+                    intervalUnit = if (startMin == null) intervalUnit else null,
                     ringtoneUri = savedToneUri,
                     ringtoneName = when (toneMode) {
                         "custom" -> toneName.ifBlank { null }
@@ -250,20 +320,18 @@ fun FormScreen(
     }
 
     pickingTime?.let { which ->
+        // RONDE 5: dial 360° Material DIGANTI picker slide vertikal
+        // (ui/components/SlideTimePicker.kt) — geser ↕ dengan snap, ketuk
+        // angka aktif untuk mengetik numerik. Batal/Pilih tetap.
         val initial = if (which == "start") startMin ?: 9 * 60 else endMin ?: 10 * 60
-        val timeState = rememberTimePickerState(initialHour = initial / 60, initialMinute = initial % 60, is24Hour = true)
-        AlertDialog(
-            onDismissRequest = { pickingTime = null },
-            title = { Text(if (which == "start") "Jam Mulai" else "Jam Selesai") },
-            text = { TimePicker(state = timeState) },
-            confirmButton = {
-                TextButton(onClick = {
-                    val value = timeState.hour * 60 + timeState.minute
-                    if (which == "start") startMin = value else endMin = value
-                    pickingTime = null
-                }) { Text("Pilih") }
-            },
-            dismissButton = { TextButton(onClick = { pickingTime = null }) { Text("Batal") } }
+        id.rama.todoplanner.ui.components.SlideTimePickerDialog(
+            title = if (which == "start") "Jam Mulai" else "Jam Selesai",
+            initialMinutes = initial,
+            onDismiss = { pickingTime = null },
+            onConfirm = { value ->
+                if (which == "start") startMin = value else endMin = value
+                pickingTime = null
+            }
         )
     }
 }

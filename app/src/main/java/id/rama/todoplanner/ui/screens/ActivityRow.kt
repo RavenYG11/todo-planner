@@ -74,9 +74,20 @@ fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () ->
                     Dates.formatTime(occ.activity.startMinutes)
                 }
                 Text(
-                    text = "$timeText • ${occ.activity.category} • Prioritas ${occ.activity.priority}",
-                    fontSize = 12.sp, color = Color(0xFF70858E)
+                    // RONDE 5: occurrence selesai menampilkan jam selesainya
+                    // ("Selesai • HH:mm" dari timestamp; data lama: "Selesai").
+                    text = "$timeText • ${occ.activity.category} • Prioritas ${occ.activity.priority}" +
+                        if (occ.done) " • " + Dates.completedLabel(occ.completedAtMillis) else "",
+                    fontSize = 12.sp,
+                    color = if (occ.done) Color(0xFF22714F) else Color(0xFF70858E)
                 )
+                // RONDE 5: waktu selesai per occurrence (dari timestamp).
+                if (occ.done) {
+                    Text(
+                        text = Dates.completedLabel(occ.completedAtMillis),
+                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep
+                    )
+                }
             }
         }
     }

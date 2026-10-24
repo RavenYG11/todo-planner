@@ -59,6 +59,7 @@ import id.rama.todoplanner.ui.Screen
 import id.rama.todoplanner.ui.components.CategoryColors
 import id.rama.todoplanner.ui.components.GradientBar
 import id.rama.todoplanner.ui.components.GradientButton
+import id.rama.todoplanner.ui.components.PastelPill
 import id.rama.todoplanner.ui.components.PeakIllustration
 import id.rama.todoplanner.ui.components.RingProgress
 import id.rama.todoplanner.ui.components.SoftCard
@@ -110,6 +111,20 @@ fun ReminderTestButtons(globalToneUri: String?) {
             onClick = { openChannelSettings(context, globalToneUri) },
             modifier = Modifier.fillMaxWidth()
         ) { Text("⚙️ Buka Pengaturan Notifikasi") }
+        Spacer(Modifier.height(8.dp))
+        // ADDENDUM RONDE 5: Tes Getar Langsung — one-shot 2 detik dari proses
+        // UI (API berbeda dari jalur reminder) untuk bisect service-vs-device.
+        OutlinedButton(
+            onClick = {
+                ReminderSoundPlayer.vibrateDirectTest(context)
+                Toast.makeText(
+                    context,
+                    "Tes getar langsung 2 detik — rasakan HP-nya, lalu baca baris Diagnostik getar",
+                    Toast.LENGTH_LONG
+                ).show()
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("📳 Tes Getar Langsung (2 detik)") }
     }
 }
 
@@ -156,6 +171,17 @@ private fun openChannelSettings(context: Context, toneUri: String?) {
 
 /* ================= REMINDER (global) ================= */
 
+/**
+ * RONDE 5 — layar Reminder disamakan dengan mockup (layar 9 Reminder):
+ *  1. Kartu "Mendatang": daftar reminder gaya mockup (titik warna kategori,
+ *     judul "Hari ini HH.mm — ...", sublabel "15 mnt sebelum • Kategori");
+ *     baris CHECKLIST dibedakan (ikon ✓ + pill "Checklist" + "tiap {interval}").
+ *  2. Kartu "⚙️ Pengaturan Reminder": badge status AKTIF untuk Suara & Getar
+ *     (gaya .toggle mockup), baris nada global + tombol Ganti (ToneField).
+ * Fitur nyata ronde sebelumnya DIPERTAHANKAN di dalam struktur ini:
+ * Izin Notifikasi, Tes Reminder 10 Detik, Tes Getar Langsung (addendum),
+ * Diagnostik getar, pemilih nada global, Buka Pengaturan Notifikasi.
+ */
 @Composable
 fun ReminderScreen(vm: AppViewModel) {
     val activities by vm.activities.collectAsState()
@@ -169,11 +195,13 @@ fun ReminderScreen(vm: AppViewModel) {
     }
     val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifGranted = it }
 
-    // RONDE 4: SATU entri per kegiatan (kemunculan berikutnya saja),
-    // urut waktu trigger naik, tie-break judul — sama seperti kartu Beranda.
+    // RONDE 4/5: SATU entri per kegiatan (kemunculan berikutnya saja),
+    // urut waktu trigger; occurrence selesai tersingkir; checklist ikut
+    // dengan trigger intervalnya — semua dari nextReminders domain.
     val upcoming = remember(activities) {
         activities.nextReminders(LocalDateTime.now(), limit = 10)
     }
+    val today = LocalDate.now()
 
     Column(
         modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
@@ -181,10 +209,48 @@ fun ReminderScreen(vm: AppViewModel) {
     ) {
         Text("🔔 Reminder", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(10.dp))
+
+        // ===== Kartu Mendatang (mockup) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("Izin Notifikasi", fontWeight = FontWeight.Bold, color = Ink)
-                Text(if (notifGranted) "Aktif ✓" else "Belum diberikan")
+                Text("Mendatang", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                if (upcoming.isEmpty()) {
+                    Text(
+                        "Belum ada reminder terjadwal.", fontSize = 12.5.sp,
+                        color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
+                    )
+                } else {
+                    upcoming.forEach { (activity, date, time) ->
+                        NextReminderRow(activity, date, time, today)
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // ===== Kartu Pengaturan Reminder (mockup: badge AKTIF) =====
+        SoftCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("⚙️ Pengaturan Reminder", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Suara notifikasi", modifier = Modifier.weight(1f), fontSize = 13.5.sp)
+                    PastelPill("AKTIF", Color(0xFF58A97C), Color.White)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Getar", modifier = Modifier.weight(1f), fontSize = 13.5.sp)
+                    PastelPill("AKTIF", Color(0xFF58A97C), Color.White)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Izin Notifikasi", modifier = Modifier.weight(1f), fontSize = 13.5.sp)
+                    if (notifGranted) {
+                        PastelPill("AKTIF", Color(0xFF58A97C), Color.White)
+                    } else {
+                        PastelPill("BELUM", Color(0xFFFDE9E4), Color(0xFFA63E2F))
+                    }
+                }
                 if (!notifGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     Spacer(Modifier.height(8.dp))
                     GradientButton(
@@ -193,43 +259,19 @@ fun ReminderScreen(vm: AppViewModel) {
                         modifier = Modifier.fillMaxWidth(), mint = true
                     )
                 }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        SoftCard(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text("🧪 Tes Bunyi & Getar", fontWeight = FontWeight.Bold, color = Ink)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Bunyi kini diputar langsung dari aplikasi (bukan dari channel).",
-                    fontSize = 12.5.sp, color = Color(0xFF70858E)
-                )
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(12.dp))
+                Text("Nada Dering Reminder (global)", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Ink)
+                Spacer(Modifier.height(6.dp))
+                ToneField(
+                    currentUri = profile.globalToneUri, label = "Nada Dering Reminder",
+                    showDefaultOption = true
+                ) { uri, name ->
+                    vm.setGlobalTone(uri, name)
+                }
+                Spacer(Modifier.height(12.dp))
                 ReminderTestButtons(globalToneUri = profile.globalToneUri)
                 Spacer(Modifier.height(8.dp))
                 VibrationDiagnosticLine()
-            }
-        }
-        Spacer(Modifier.height(14.dp))
-        Text("Nada Dering Reminder (global)", fontWeight = FontWeight.Bold, color = Ink)
-        Spacer(Modifier.height(6.dp))
-        // RONDE 3: showDefaultOption menampilkan "Bawaan HP (default)" paling
-        // atas — memilihnya menghapus URI kustom global (setGlobalTone(null)).
-        ToneField(
-            currentUri = profile.globalToneUri, label = "Nada Dering Reminder",
-            showDefaultOption = true
-        ) { uri, name ->
-            vm.setGlobalTone(uri, name)
-        }
-        Spacer(Modifier.height(14.dp))
-        Text("Reminder Terdekat", fontWeight = FontWeight.Bold, color = Ink)
-        if (upcoming.isEmpty()) Text("Belum ada reminder terjadwal.")
-        upcoming.forEach { (activity, _, time) ->
-            SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-                Text(
-                    "• ${time.format(DateTimeFormatter.ofPattern("HH.mm"))} — ${activity.title}  (${time.format(DateTimeFormatter.ofPattern("d MMM"))})",
-                    modifier = Modifier.padding(12.dp), fontSize = 13.sp
-                )
             }
         }
     }
@@ -428,7 +470,7 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
         SoftCard(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text("Tentang", fontWeight = FontWeight.Bold, color = Ink)
-                Text("Todo Planner v1.0.2 — full lokal & offline.")
+                Text("Todo Planner v1.0.3 — full lokal & offline.")
             }
         }
     }

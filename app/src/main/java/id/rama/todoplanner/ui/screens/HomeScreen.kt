@@ -251,18 +251,10 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
                         color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
                     )
                 } else {
-                    Spacer(Modifier.height(4.dp))
+                    // RONDE 5: baris dibedakan checklist vs todo utama
+                    // (komponen bersama dengan layar Reminder).
                     upcomingReminders.forEach { (activity, date, time) ->
-                        val jam = time.format(DateTimeFormatter.ofPattern("HH.mm"))
-                        val label = when (date) {
-                            today -> "$jam — ${activity.title}"
-                            today.plusDays(1) -> "Besok $jam — ${activity.title}"
-                            else -> "${date.format(Dates.shortDate)} $jam — ${activity.title}"
-                        }
-                        Text(
-                            "• $label", fontSize = 12.5.sp, color = Color(0xFF3D5561),
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
+                        NextReminderRow(activity, date, time, today)
                     }
                 }
                 Spacer(Modifier.height(6.dp))

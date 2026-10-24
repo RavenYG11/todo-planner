@@ -43,7 +43,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import id.rama.todoplanner.domain.Dates
+import id.rama.todoplanner.domain.buildPdfBlocks
 import id.rama.todoplanner.domain.occurrencesBetween
+import id.rama.todoplanner.domain.onlyTodoUtama
 import id.rama.todoplanner.pdf.PdfExporter
 import id.rama.todoplanner.ui.AppViewModel
 import id.rama.todoplanner.ui.components.Categories
@@ -191,9 +193,12 @@ fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, cat
     val rangeLabel = periodRangeLabel(period, anchor)
     val catLabel = if (categories.size == Categories.size) "Semua kategori" else categories.joinToString(", ")
     val periodLabel = "$rangeLabel • $catLabel"
+    // RONDE 5: PDF & Preview hanya memuat TODO UTAMA — checklist dikeluarkan.
     val occs = remember(activities, from, to, categories) {
-        activities.occurrencesBetween(from, to).filter { it.activity.category in categories }
+        activities.occurrencesBetween(from, to).filter { it.activity.category in categories }.onlyTodoUtama()
     }
+    // RONDE 5: struktur kelompok sama persis dengan PdfExporter.
+    val blocks = remember(occs, period) { buildPdfBlocks(period, occs) }
     val done = occs.count { it.done }
     val pct = if (occs.isEmpty()) 0 else done * 100 / occs.size
     val today = LocalDate.now()
@@ -251,48 +256,90 @@ fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, cat
                         }
                     }
                     Spacer(Modifier.height(10.dp))
-                    // Kepala tabel
+                    // Kepala kolom (dengan No. penomoran per hari)
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        Text("Kegiatan", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(1.7f))
+                        Text("No.", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(0.22f))
+                        Text("Kegiatan", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(1.5f))
                         Text("Tanggal", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(0.55f))
                         Text("Kategori", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(0.75f))
-                        Text("Status", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(0.7f))
+                        Text("Status", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF58707C), modifier = Modifier.weight(0.85f))
                     }
                     Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFE1EBEF)))
-                    occs.take(30).forEach { occ ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // RONDE 4: deskripsi ikut tampil di bawah judul (kecil,
-                            // abu-abu, italic) — sama seperti PDF aslinya.
-                            Column(modifier = Modifier.weight(1.7f)) {
-                                Text(occ.activity.title, fontSize = 12.sp)
-                                if (occ.activity.note.isNotBlank()) {
-                                    Text(
-                                        occ.activity.note,
-                                        fontSize = 10.5.sp,
-                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                                        color = Color(0xFF70858E)
-                                    )
+                    // RONDE 5: kelompok bertingkat per periode (bulan->minggu->hari)
+                    // dengan penomoran yang mulai ulang tiap hari.
+                    blocks.forEach { block ->
+                        when (block.level) {
+                            0 -> Box(
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                                    .background(Brush.horizontalGradient(listOf(Color(0xFF9B8BD4), Color(0xFF6FB3DC))))
+                                    .padding(horizontal = 10.dp, vertical = 7.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("📅 ${block.label}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White, modifier = Modifier.weight(1f))
+                                    block.sublabel?.let { Text(it, fontSize = 10.5.sp, color = Color.White) }
                                 }
                             }
-                            Text(occ.date.format(DateTimeFormatter.ofPattern("d MMM", idLocale)), fontSize = 12.sp, modifier = Modifier.weight(0.55f))
-                            Box(modifier = Modifier.weight(0.75f)) { CategoryPill(occ.activity.category) }
-                            Text(
-                                when {
-                                    occ.done -> "✓ Selesai"
-                                    occ.date.isBefore(today) -> "Belum selesai"
-                                    else -> "Mendatang"
-                                },
-                                fontSize = 12.sp,
-                                color = if (occ.done) Color(0xFF22714F) else Color(0xFF58707C),
-                                modifier = Modifier.weight(0.7f)
-                            )
+                            1 -> Box(
+                                modifier = Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFFCF0D8))
+                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("🗓️ ${block.label}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF7A5610), modifier = Modifier.weight(1f))
+                                    block.sublabel?.let { Text(it, fontSize = 10.5.sp, color = Color(0xFF7A5610)) }
+                                }
+                            }
+                            2 -> Box(
+                                modifier = Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 2.dp)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(5.dp))
+                                    .background(Color(0xFFE1F2FB))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(block.label, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color(0xFF1B5475), modifier = Modifier.weight(1f))
+                                    block.sublabel?.let { Text(it, fontSize = 10.sp, color = Color(0xFF58707C)) }
+                                }
+                            }
+                            else -> {
+                                val occ = block.occurrence!!
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("${block.number}.", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF2B6E91), modifier = Modifier.weight(0.22f))
+                                    Column(modifier = Modifier.weight(1.5f)) {
+                                        Text(occ.activity.title, fontSize = 12.sp)
+                                        if (occ.activity.note.isNotBlank()) {
+                                            Text(
+                                                occ.activity.note,
+                                                fontSize = 10.5.sp,
+                                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                                color = Color(0xFF70858E)
+                                            )
+                                        }
+                                    }
+                                    Text(occ.date.format(DateTimeFormatter.ofPattern("d MMM", idLocale)), fontSize = 12.sp, modifier = Modifier.weight(0.55f))
+                                    Box(modifier = Modifier.weight(0.75f)) { CategoryPill(occ.activity.category) }
+                                    Text(
+                                        when {
+                                            occ.done && period == "Harian" ->
+                                                occ.completedAtMillis?.let { "Diselesaikan " + id.rama.todoplanner.domain.Dates.formatCompletedTime(it) } ?: "Selesai"
+                                            occ.done ->
+                                                occ.completedAtMillis?.let { "✓ Selesai • " + id.rama.todoplanner.domain.Dates.formatCompletedTime(it) } ?: "✓ Selesai"
+                                            occ.date.isBefore(today) -> "Belum selesai"
+                                            else -> "Mendatang"
+                                        },
+                                        fontSize = 11.5.sp,
+                                        color = if (occ.done) Color(0xFF22714F) else Color(0xFF58707C),
+                                        modifier = Modifier.weight(0.85f)
+                                    )
+                                }
+                                Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF0F4F6)))
+                            }
                         }
-                        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFFF0F4F6)))
                     }
-                    if (occs.size > 30) Text("… dan ${occs.size - 30} kegiatan lain (semua masuk di PDF)", fontSize = 11.5.sp, color = Color(0xFF70858E))
                     if (occs.isEmpty()) Text("Tidak ada kegiatan pada periode & kategori ini.", fontSize = 12.5.sp)
                     Spacer(Modifier.height(10.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
@@ -311,7 +358,7 @@ fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, cat
             onClick = {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
-                        PdfExporter.saveToDownloads(context, profile.name, title, periodLabel, occs)
+                        PdfExporter.saveToDownloads(context, profile.name, title, periodLabel, occs, period)
                     }
                     Toast.makeText(context, "PDF tersimpan: ${result.location}", Toast.LENGTH_LONG).show()
                 }
@@ -323,7 +370,7 @@ fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, cat
             onClick = {
                 scope.launch {
                     val shareUri = withContext(Dispatchers.IO) {
-                        PdfExporter.writeCacheCopy(context, profile.name, title, periodLabel, occs, "TodoPlanner.pdf")
+                        PdfExporter.writeCacheCopy(context, profile.name, title, periodLabel, occs, "TodoPlanner.pdf", period)
                     }
                     val intent = Intent(Intent.ACTION_SEND).apply {
                         type = "application/pdf"

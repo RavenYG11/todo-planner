@@ -91,10 +91,21 @@ fun DetailScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 DetailLine("Tanggal", date.format(Dates.fullDate))
-                DetailLine("Jam", Dates.formatTime(activity.startMinutes) + " – " + Dates.formatTime(activity.endMinutes))
+                // RONDE 5: checklist (tanpa jam) ditampilkan apa adanya.
+                DetailLine(
+                    "Jam",
+                    if (activity.isChecklist) "— (checklist tanpa jam)"
+                    else Dates.formatTime(activity.startMinutes) + " – " + Dates.formatTime(activity.endMinutes)
+                )
                 DetailLine("Template", activity.template)
                 DetailLine("Ulangi", repeatLabel(activity.repeatRule))
-                DetailLine("Reminder", reminderLabel(activity.reminderMinutesBefore))
+                DetailLine(
+                    "Reminder",
+                    if (activity.isChecklist) {
+                        if (activity.intervalMillis() != null) "Tiap ${activity.intervalLabel()} (06.00–22.00)"
+                        else "Tanpa reminder"
+                    } else reminderLabel(activity.reminderMinutesBefore)
+                )
                 DetailLine(
                     "Nada Dering",
                     when {
@@ -104,7 +115,14 @@ fun DetailScreen(
                     }
                 )
                 DetailLine("Prioritas", activity.priority)
-                DetailLine("Status", if (done) "Selesai ✓" else "Belum selesai")
+                DetailLine(
+                    "Status",
+                    if (done) {
+                        // RONDE 5: sertakan jam selesai dari timestamp occurrence.
+                        val ts = activity.completedAtMillis(date.toEpochDay())
+                        if (ts != null) "Selesai ✓ • " + Dates.formatCompletedTime(ts) else "Selesai ✓"
+                    } else "Belum selesai"
+                )
                 if (activity.note.isNotBlank()) DetailLine("Catatan", activity.note)
             }
         }
