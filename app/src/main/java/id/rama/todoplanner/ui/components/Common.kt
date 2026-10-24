@@ -76,8 +76,13 @@ fun GradientButton(
     mint: Boolean = false,
     enabled: Boolean = true
 ) {
-    val colors = if (mint) listOf(Color(0xFF5FA9CE), Color(0xFF7FC48F))
-    else listOf(Color(0xFFF2A65A), Color(0xFFF28B82))
+    // RONDE 7: keadaan disabled = abu-abu beneran (bukan gradasi pudar),
+    // supaya jelas terlihat tidak bisa diklik.
+    val colors = when {
+        !enabled -> listOf(Color(0xFFB9C4CA), Color(0xFF9FB0B8))
+        mint -> listOf(Color(0xFF5FA9CE), Color(0xFF7FC48F))
+        else -> listOf(Color(0xFFF2A65A), Color(0xFFF28B82))
+    }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))

@@ -91,10 +91,10 @@ fun DetailScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 DetailLine("Tanggal", date.format(Dates.fullDate))
-                // RONDE 5: checklist (tanpa jam) ditampilkan apa adanya.
+                // RONDE 5: Daily Reminder (tanpa jam) ditampilkan apa adanya.
                 DetailLine(
                     "Jam",
-                    if (activity.isChecklist) "— (checklist tanpa jam)"
+                    if (activity.isChecklist) "— (Daily Reminder tanpa jam)"
                     else Dates.formatTime(activity.startMinutes) + " – " + Dates.formatTime(activity.endMinutes)
                 )
                 DetailLine("Template", activity.template)
@@ -121,21 +121,40 @@ fun DetailScreen(
                     }
                 )
                 DetailLine("Prioritas", activity.priority)
-                DetailLine(
-                    "Status",
-                    if (done) {
-                        // RONDE 5: sertakan jam selesai dari timestamp occurrence.
-                        val ts = activity.completedAtMillis(date.toEpochDay())
-                        if (ts != null) "Selesai ✓ • " + Dates.formatCompletedTime(ts) else "Selesai ✓"
-                    } else "Belum selesai"
-                )
+                if (activity.isChecklist) {
+                    // RONDE 7 — status Daily Reminder = daftar jam penandaan
+                    // hari itu (bukan state selesai) + bunyi berikutnya.
+                    val times = activity.dailyCompletionTimes(date.toEpochDay())
+                    DetailLine(
+                        "Ditandai selesai 😉",
+                        if (times.isEmpty()) "Belum ditandai hari ini"
+                        else times.joinToString(" • ") { Dates.formatCompletedTime(it) }
+                    )
+                    if (times.isNotEmpty() && activity.intervalMillis() != null) {
+                        DetailLine(
+                            "Bunyi berikutnya",
+                            Dates.formatCompletedTime(times.last() + activity.intervalMillis()!!)
+                        )
+                    }
+                } else {
+                    DetailLine(
+                        "Status",
+                        if (done) {
+                            val ts = activity.completedAtMillis(date.toEpochDay())
+                            if (ts != null) "Selesai ✓ • " + Dates.formatCompletedTime(ts) else "Selesai ✓"
+                        } else "Belum selesai"
+                    )
+                }
                 if (activity.note.isNotBlank()) DetailLine("Catatan", activity.note)
             }
         }
         Spacer(Modifier.height(14.dp))
         GradientButton(
-            text = if (done) "↩️ Batalkan Selesai" else "✓ Tandai Selesai",
-            onClick = { vm.toggleDone(activity, dateEpochDay, !done) { onGoHome() } },
+            // RONDE 7: Daily Reminder tidak punya "Batalkan Selesai" — tombol
+            // selalu mencatat penandaan baru (emoji WINK).
+            text = if (activity.isChecklist) "😉 Tandai Selesai"
+                else if (done) "↩️ Batalkan Selesai" else "✓ Tandai Selesai",
+            onClick = { vm.toggleDone(activity, dateEpochDay, if (activity.isChecklist) true else !done) { onGoHome() } },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(8.dp))

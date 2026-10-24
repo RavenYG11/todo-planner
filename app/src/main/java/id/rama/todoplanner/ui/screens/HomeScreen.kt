@@ -63,7 +63,7 @@ import java.util.Locale
  *    sapaan + emoji fase hari + tagline dinamis per fase, chip jam pill kanan atas.
  *  - Kartu progres: ring gradasi tebal, % besar + caption "hari ini" di tengah
  *    ring, judul dinamis mengikuti %, pill Streak + pill aksen fase.
- *  - "Kegiatan Berikutnya" & "Reminder Terdekat" = kartu TERPISAH berikon judul;
+ *  - "Kegiatan Berikutnya" & "Schedule Warning" = kartu TERPISAH berikon judul;
  *    item kegiatan bergaris aksen kategori + lingkaran centang; reminder bullet
  *    jam + link "Lihat semua reminder".
  *  - Grid "Mulai dari Template" 2x2 seperti mockup.
@@ -90,7 +90,7 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
     }
     // RONDE 4: SATU entri per kegiatan (kemunculan berikutnya saja) — dulu
     // ekspansi 14 hari membuat kegiatan harian mendominasi daftar.
-    // RONDE 6: jendela checklist mengikuti setting hari aktif user (profile).
+    // RONDE 6: jendela Daily Reminder mengikuti setting hari aktif user (profile).
     val upcomingReminders = remember(activities, now, profile.dayStartMinutes, profile.dayEndMinutes) {
         activities.nextReminders(
             now, limit = 3,
@@ -246,17 +246,17 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
         }
         Spacer(Modifier.height(12.dp))
 
-        // ===== Reminder Terdekat (kartu TERPISAH, mockup) =====
+        // ===== Schedule Warning (kartu TERPISAH, mockup) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("🔔 Reminder Terdekat", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                Text("🔔 Schedule Warning", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
                 if (upcomingReminders.isEmpty()) {
                     Text(
-                        "Belum ada reminder terjadwal", fontSize = 12.5.sp,
+                        "Belum ada pengingat terjadwal", fontSize = 12.5.sp,
                         color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
                     )
                 } else {
-                    // RONDE 5: baris dibedakan checklist vs todo utama
+                    // RONDE 5: baris dibedakan Daily Reminder vs todo utama
                     // (komponen bersama dengan layar Reminder).
                     upcomingReminders.forEach { (activity, date, time) ->
                         NextReminderRow(activity, date, time, today)
@@ -264,7 +264,7 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Lihat semua reminder →", color = SkyBlueDark, fontWeight = FontWeight.Bold,
+                    "Lihat Schedule Warning →", color = SkyBlueDark, fontWeight = FontWeight.Bold,
                     fontSize = 13.sp, modifier = Modifier.clickable { onNavigate(Screen.Reminder) }
                 )
             }
@@ -287,7 +287,7 @@ fun HomeScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit, onOpenDetail: (Oc
         Text("Mulai dari Template", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Ink)
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            TemplateTile("🌤️", "Harian", "Time-block per jam + checklist", listOf(Color(0xFFFFD98A), Color(0xFFF6A56B)), Modifier.weight(1f)) { onNavigate(Screen.Daily) }
+            TemplateTile("🌤️", "Harian", "Time-block per jam + Daily Reminder", listOf(Color(0xFFFFD98A), Color(0xFFF6A56B)), Modifier.weight(1f)) { onNavigate(Screen.Daily) }
             TemplateTile("🗓️", "Mingguan", "Senin–Minggu satu pandangan", listOf(Color(0xFF8FD0F0), Color(0xFF6FB3DC)), Modifier.weight(1f)) { onNavigate(Screen.Weekly) }
         }
         Spacer(Modifier.height(10.dp))

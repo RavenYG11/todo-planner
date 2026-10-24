@@ -193,7 +193,7 @@ fun PdfPreviewScreen(vm: AppViewModel, period: String, anchorEpochDay: Long, cat
     val rangeLabel = periodRangeLabel(period, anchor)
     val catLabel = if (categories.size == Categories.size) "Semua kategori" else categories.joinToString(", ")
     val periodLabel = "$rangeLabel • $catLabel"
-    // RONDE 5: PDF & Preview hanya memuat TODO UTAMA — checklist dikeluarkan.
+    // RONDE 5: PDF & Preview hanya memuat TODO UTAMA — Daily Reminder dikeluarkan.
     val occs = remember(activities, from, to, categories) {
         activities.occurrencesBetween(from, to).filter { it.activity.category in categories }.onlyTodoUtama()
     }

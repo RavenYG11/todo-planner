@@ -38,6 +38,12 @@ import id.rama.todoplanner.ui.theme.GreenDeep
 @Composable
 fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () -> Unit) {
     val accent = CategoryColors[occ.activity.category] ?: Color.Gray
+    // RONDE 7 — Daily Reminder: BUKAN state selesai. Penanda = emoji WINK
+    // bila hari ini sudah pernah ditandai; judul TIDAK dicoret; daftar jam
+    // penandaan hari itu ditampilkan. Todo Utama memakai semantik lama.
+    val isDaily = occ.activity.isChecklist
+    val shownDone = if (isDaily) false else occ.done
+    val dailyTimes = if (isDaily) occ.dailyCompletions else emptyList()
     SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp).clickable { onClick() }) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -49,23 +55,29 @@ fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () ->
                     .clip(RoundedCornerShape(4.dp)).background(accent)
             )
             Spacer(Modifier.width(10.dp))
-            // Lingkaran centang ala mockup (.check)
+            // Lingkaran penanda ala mockup (.check); RONDE 7: untuk Daily
+            // Reminder isinya emoji WINK (bukan centang), ketuk = catat
+            // penandaan baru (ViewModel membedakan semantiknya).
             Box(
                 modifier = Modifier.size(24.dp).clip(CircleShape)
-                    .background(if (occ.done) GreenDeep else Color.Transparent)
+                    .background(if (shownDone || dailyTimes.isNotEmpty()) GreenDeep else Color.Transparent)
                     .border(2.dp, GreenDeep, CircleShape)
-                    .clickable { onToggleDone(!occ.done) },
+                    .clickable { onToggleDone(if (isDaily) true else !occ.done) },
                 contentAlignment = Alignment.Center
             ) {
-                if (occ.done) Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                if (isDaily) {
+                    if (dailyTimes.isNotEmpty()) Text("😉", fontSize = 12.sp)
+                } else if (occ.done) {
+                    Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = occ.activity.displayTitle,
                     fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-                    textDecoration = if (occ.done) TextDecoration.LineThrough else null,
-                    color = if (occ.done) Color(0xFF9FB0B8) else Color(0xFF22333D)
+                    textDecoration = if (shownDone) TextDecoration.LineThrough else null,
+                    color = if (shownDone) Color(0xFF9FB0B8) else Color(0xFF22333D)
                 )
                 val end = occ.activity.endMinutes
                 val timeText = if (end != null) {
@@ -73,20 +85,37 @@ fun ActivityRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () ->
                 } else {
                     Dates.formatTime(occ.activity.startMinutes)
                 }
-                Text(
-                    // RONDE 5: occurrence selesai menampilkan jam selesainya
-                    // ("Selesai • HH:mm" dari timestamp; data lama: "Selesai").
-                    text = "$timeText • ${occ.activity.category} • Prioritas ${occ.activity.priority}" +
-                        if (occ.done) " • " + Dates.completedLabel(occ.completedAtMillis) else "",
-                    fontSize = 12.sp,
-                    color = if (occ.done) Color(0xFF22714F) else Color(0xFF70858E)
-                )
-                // RONDE 5: waktu selesai per occurrence (dari timestamp).
-                if (occ.done) {
+                if (isDaily) {
+                    // RONDE 7: info Daily Reminder — interval + bunyi berikutnya
                     Text(
-                        text = Dates.completedLabel(occ.completedAtMillis),
-                        fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep
+                        text = "Daily Reminder • tiap ${occ.activity.intervalLabel()} • ${occ.activity.category}",
+                        fontSize = 12.sp, color = Color(0xFF70858E)
                     )
+                    if (dailyTimes.isNotEmpty()) {
+                        Text(
+                            text = "😉 Ditandai selesai: " + dailyTimes.joinToString(" • ") { Dates.formatCompletedTime(it) },
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep
+                        )
+                        val nextMs = dailyTimes.last() + (occ.activity.intervalMillis() ?: 0L)
+                        Text(
+                            text = "Bunyi berikutnya: " + Dates.formatCompletedTime(nextMs),
+                            fontSize = 12.sp, color = Color(0xFF22714F)
+                        )
+                    }
+                } else {
+                    Text(
+                        // RONDE 5: occurrence selesai menampilkan jam selesainya
+                        text = "$timeText • ${occ.activity.category} • Prioritas ${occ.activity.priority}" +
+                            if (occ.done) " • " + Dates.completedLabel(occ.completedAtMillis) else "",
+                        fontSize = 12.sp,
+                        color = if (occ.done) Color(0xFF22714F) else Color(0xFF70858E)
+                    )
+                    if (occ.done) {
+                        Text(
+                            text = Dates.completedLabel(occ.completedAtMillis),
+                            fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep
+                        )
+                    }
                 }
             }
         }

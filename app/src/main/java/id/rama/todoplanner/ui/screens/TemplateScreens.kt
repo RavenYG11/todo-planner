@@ -93,42 +93,69 @@ private fun PastelAddButton(contentDescription: String, onClick: () -> Unit) {
 
 /**
  * Baris kegiatan ringkas TANPA kartu (dipakai DI DALAM SoftCard: timeline
- * Harian & checklist) — titik/garis kategori + judul + pill kategori.
+ * Harian & Daily Reminder) — titik/garis kategori + judul + pill kategori.
  * Ketuk lingkaran = tandai selesai; ketuk baris = buka Detail.
  */
 @Composable
 private fun CompactRow(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onClick: () -> Unit) {
+    // RONDE 7 — baris ini dipakai section Daily Reminder di Harian:
+    // penanda WINK (bukan centang), tanpa coret, daftar jam penandaan hari
+    // itu + jam bunyi berikutnya (penandaan terakhir + interval).
+    val isDaily = occ.activity.isChecklist
+    val dailyTimes = if (isDaily) occ.dailyCompletions else emptyList()
+    val shownDone = if (isDaily) false else occ.done
     Row(
         modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier.size(24.dp).clip(CircleShape)
-                .background(if (occ.done) GreenDeep else Color.Transparent)
+                .background(if (shownDone || dailyTimes.isNotEmpty()) GreenDeep else Color.Transparent)
                 .border(2.dp, GreenDeep, CircleShape)
-                .clickable { onToggleDone(!occ.done) },
+                .clickable { onToggleDone(if (isDaily) true else !occ.done) },
             contentAlignment = Alignment.Center
         ) {
-            if (occ.done) Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            if (isDaily) {
+                if (dailyTimes.isNotEmpty()) Text("😉", fontSize = 12.sp)
+            } else if (occ.done) {
+                Text("✓", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 occ.activity.displayTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
-                color = if (occ.done) Color(0xFF9FB0B8) else Ink,
-                textDecoration = if (occ.done) TextDecoration.LineThrough else null
+                color = if (shownDone) Color(0xFF9FB0B8) else Ink,
+                textDecoration = if (shownDone) TextDecoration.LineThrough else null
             )
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CategoryPill(occ.activity.category)
-                // RONDE 5: "Selesai • HH:mm" dari timestamp per occurrence.
-                if (occ.done) {
+                if (!isDaily && occ.done) {
                     Spacer(Modifier.width(6.dp))
                     Text(
                         Dates.completedLabel(occ.completedAtMillis),
                         fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep
                     )
                 }
+            }
+            if (isDaily && dailyTimes.isNotEmpty()) {
+                Text(
+                    "😉 Ditandai selesai: " + dailyTimes.joinToString(" • ") { Dates.formatCompletedTime(it) },
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GreenDeep,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+                val nextMs = dailyTimes.last() + (occ.activity.intervalMillis() ?: 0L)
+                Text(
+                    "Bunyi berikutnya: " + Dates.formatCompletedTime(nextMs) + " • tiap ${occ.activity.intervalLabel()}",
+                    fontSize = 12.sp, color = Color(0xFF22714F)
+                )
+            } else if (isDaily) {
+                Text(
+                    "Daily Reminder • tiap ${occ.activity.intervalLabel()}",
+                    fontSize = 12.sp, color = Color(0xFF70858E),
+                    modifier = Modifier.padding(top = 3.dp)
+                )
             }
         }
     }
@@ -150,7 +177,7 @@ fun IllustratedEmptyState(text: String, actionText: String, onAction: () -> Unit
     }
 }
 
-/* ================= HARIAN: time-block berkartu + timeline + checklist ================= */
+/* ================= HARIAN: time-block berkartu + timeline + Daily Reminder ================= */
 
 @Composable
 fun DailyScreen(
@@ -189,7 +216,7 @@ fun DailyScreen(
         Spacer(Modifier.height(12.dp))
 
         // ===== RONDE 6: pengaturan jendela hari aktif (mengatur slot di
-        // bawah DAN jendela alarm berantai checklist) =====
+        // bawah DAN jendela alarm berantai Daily Reminder) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -282,12 +309,12 @@ fun DailyScreen(
         }
         Spacer(Modifier.height(12.dp))
 
-        // ===== Checklist terpisah (mockup) =====
+        // ===== Daily Reminder terpisah (mockup) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("✅ Checklist Hari Ini", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                Text("😉 Daily Reminder Hari Ini", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
                 if (checklist.isEmpty()) {
-                    Text("Belum ada kegiatan tanpa jam.", fontSize = 12.5.sp, color = SubInk, modifier = Modifier.padding(top = 6.dp))
+                    Text("Belum ada Daily Reminder.", fontSize = 12.5.sp, color = SubInk, modifier = Modifier.padding(top = 6.dp))
                 } else {
                     checklist.forEach { occ ->
                         CompactRow(occ, onToggleDone = { vm.toggleDone(occ.activity, occ.date.toEpochDay(), it) }, onClick = { onOpenDetail(occ) })

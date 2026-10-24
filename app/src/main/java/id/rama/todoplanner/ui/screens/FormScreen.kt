@@ -75,7 +75,7 @@ private val REPEAT_OPTIONS = listOf("NONE" to "Tidak", "DAILY" to "Harian", "WEE
 // defensif di bawah (tidak ada chip terpilih; user memilih ulang bila membuka form).
 private val REMINDER_OPTIONS = listOf<Int?>(null, 15, 60, 1440)
 private val REMINDER_LABELS = listOf("Tanpa", "15 mnt sebelum", "1 jam sebelum", "1 hari sebelum")
-// RONDE 5: preset interval checklist (nilai, kode satuan, label chip) + input angka bebas.
+// RONDE 5: preset interval Daily Reminder (nilai, kode satuan, label chip) + input angka bebas.
 private val INTERVAL_PRESETS = listOf(
     Triple(30, "DETIK", "30 Detik"),
     Triple(1, "MENIT", "1 Menit"),
@@ -120,7 +120,7 @@ fun FormScreen(
     var template by remember(editId) { mutableStateOf(existing?.template ?: presetTemplate ?: "Harian") }
     var repeat by remember(editId) { mutableStateOf(existing?.repeatRule ?: "NONE") }
     var reminder by remember(editId) { mutableStateOf<Int?>(existing?.reminderMinutesBefore) }
-    // RONDE 5 — interval pengulangan checklist (hanya dipakai bila tanpa jam).
+    // RONDE 5 — interval pengulangan Daily Reminder (hanya dipakai bila tanpa jam).
     // Satuan disimpan sebagai kode entitas: "DETIK" | "MENIT" | "JAM".
     var intervalValueText by remember(editId) { mutableStateOf(existing?.intervalValue?.toString() ?: "5") }
     var intervalUnit by remember(editId) { mutableStateOf(existing?.intervalUnit ?: "MENIT") }
@@ -148,9 +148,7 @@ fun FormScreen(
     // RONDE 6 — logo emoji kegiatan ("" = tanpa logo).
     var iconEmoji by remember(editId) { mutableStateOf(existing?.iconEmoji ?: "") }
     var titleError by remember { mutableStateOf(false) }
-    // RONDE 6 — pesan validasi jam lampau untuk todo sekali jalan (Ulangi=Tidak).
-    var pastTimeError by remember { mutableStateOf("") }
-    // RONDE 6 — jendela hari aktif user (untuk teks bantuan checklist).
+    // RONDE 6 — jendela hari aktif user (untuk teks bantuan Daily Reminder).
     val formContext = LocalContext.current
     val prefs = remember { AppPrefs(formContext) }
     val windowLabel = "%02d.%02d–%02d.%02d".format(
@@ -184,7 +182,7 @@ fun FormScreen(
 
     // RONDE 6 — VALIDASI JAM TODO UTAMA: Ulangi = "Tidak" (sekali jalan) ->
     // tanggal+jam mulai HARUS setelah waktu realtime HP. Bila ulangan lain,
-    // waktu lampau boleh (occurrence berikutnya yang berlaku). Checklist
+    // waktu lampau boleh (occurrence berikutnya yang berlaku). Daily Reminder
     // (tanpa jam) tidak divalidasi di sini.
     val pastOnceError: String = if (repeat == "NONE" && startMin != null) {
         val chosen = LocalDateTime.of(date, LocalTime.of(startMin!! / 60, startMin!! % 60))
@@ -192,6 +190,14 @@ fun FormScreen(
             "Waktu kegiatan sudah lewat. Untuk Ulangi = Tidak, pilih tanggal & jam di masa depan."
         } else ""
     } else ""
+    // RONDE 7 — VALIDASI LIVE dari state TERKINI pada SETIAP perubahan:
+    // tidak ada lagi pesan basi yang disimpan. Mode tanpa jam (Daily
+    // Reminder) TIDAK kena aturan waktu lampau (pastOnceError sudah ""
+    // karena startMin == null); warning hilang begitu kondisi valid lagi.
+    // Interval Daily Reminder wajib angka >= 1.
+    val intervalValid: Boolean = startMin != null ||
+        (intervalValueText.toIntOrNull()?.let { it >= 1 } == true)
+    val isFormValid: Boolean = title.isNotBlank() && pastOnceError.isBlank() && intervalValid
     LaunchedEffect(dirty) { onDirtyChange(dirty) }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -229,11 +235,14 @@ fun FormScreen(
             OutlinedButton(onClick = { pickingTime = "start" }) { Text("Mulai: " + Dates.formatTime(startMin)) }
             OutlinedButton(onClick = { pickingTime = "end" }) { Text("Selesai: " + Dates.formatTime(endMin)) }
         }
-        if (startMin != null) TextButton(onClick = { startMin = null; endMin = null }) { Text("Hapus jam (jadikan checklist)") }
-        // RONDE 6: pesan validasi waktu lampau tampil langsung (dan simpan diblokir di bawah).
-        val shownPastError = pastTimeError.ifBlank { pastOnceError }
-        if (shownPastError.isNotBlank()) {
-            Text(shownPastError, color = Color.Red, fontSize = 12.5.sp)
+        if (startMin != null) TextButton(onClick = { startMin = null; endMin = null }) { Text("Hapus jam (jadikan Daily Reminder)") }
+        // RONDE 7: pesan validasi SELALU dari hitungan live di atas —
+        // hilang seketika saat mode/tanggal/jam/ulangan berubah jadi valid.
+        if (pastOnceError.isNotBlank()) {
+            Text(pastOnceError, color = Color.Red, fontSize = 12.5.sp)
+        }
+        if (startMin == null && !intervalValid) {
+            Text("Interval Daily Reminder wajib diisi angka minimal 1.", color = Color.Red, fontSize = 12.5.sp)
         }
         Spacer(Modifier.height(8.dp))
 
@@ -243,14 +252,14 @@ fun FormScreen(
         ChipRow(REPEAT_OPTIONS.map { it.second }, REPEAT_OPTIONS.first { it.first == repeat }.second, { Lavender }) { label ->
             repeat = REPEAT_OPTIONS.first { it.second == label }.first
         }
-        // RONDE 5 — CHECKLIST (tanpa jam) dibedakan dari TODO UTAMA:
+        // RONDE 5 — DAILY REMINDER (tanpa jam) dibedakan dari TODO UTAMA:
         // opsi reminder "sebelum mulai" DIGANTI interval pengulangan 1 hari.
         // Pola hari pengulangan (chip "Ulangi" di atas) tetap dipertahankan.
         val isChecklistForm = startMin == null
         if (isChecklistForm) {
-            Text("✓ Checklist — Interval Pengulangan", fontWeight = FontWeight.Bold)
+            Text("😉 Daily Reminder — Interval Pengulangan", fontWeight = FontWeight.Bold)
             Text(
-                "Berbunyi berulang tiap interval pukul $windowLabel. Ditandai selesai = timer reset (bunyi lagi setelah +interval).",
+                "Berbunyi berulang tiap interval pukul $windowLabel. Ditandai selesai 😉 = catatan jam tersimpan + timer reset (bunyi lagi setelah +interval).",
                 fontSize = 12.sp, color = Color(0xFF70858E)
             )
             Row(
@@ -325,15 +334,15 @@ fun FormScreen(
         Spacer(Modifier.height(6.dp))
         OutlinedTextField(note, { note = it }, label = { Text("Catatan") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
         Spacer(Modifier.height(14.dp))
+        // RONDE 7: tombol DISABLED beneran (abu-abu + tidak bisa diklik)
+        // selama form tidak valid — bukan lagi klik-tapi-diam.
         GradientButton(
             text = "💾 Simpan Kegiatan",
+            enabled = isFormValid,
             onClick = {
+                if (!isFormValid) return@GradientButton // pengaman; tombol disabled pun tidak memanggil ini
                 if (title.isBlank()) { titleError = true; return@GradientButton }
-                // RONDE 6: simpan TERBLOKIR untuk todo sekali jalan (Ulangi =
-                // Tidak) yang waktunya sudah lewat — berlaku juga jalur EDIT,
-                // termasuk edit kegiatan yang sudah selesai/dibatalkan selesai.
-                if (pastOnceError.isNotBlank()) { pastTimeError = pastOnceError; return@GradientButton }
-                // RONDE 5: checklist menyimpan interval (reminder "sebelum
+                // RONDE 5: Daily Reminder menyimpan interval (reminder "sebelum
                 // mulai" dikosongkan); todo utama menyimpan reminder seperti
                 // biasa dan interval dikosongkan — dua mode tidak tercampur.
                 val entity = (existing ?: ActivityEntity(title = "", dateEpochDay = date.toEpochDay())).copy(

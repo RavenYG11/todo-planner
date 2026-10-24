@@ -175,7 +175,7 @@ private fun openChannelSettings(context: Context, toneUri: String?) {
  * RONDE 5 — layar Reminder disamakan dengan mockup (layar 9 Reminder):
  *  1. Kartu "Mendatang": daftar reminder gaya mockup (titik warna kategori,
  *     judul "Hari ini HH.mm — ...", sublabel "15 mnt sebelum • Kategori");
- *     baris CHECKLIST dibedakan (ikon ✓ + pill "Checklist" + "tiap {interval}").
+ *     baris DAILY REMINDER dibedakan (ikon ✓ + pill "Daily Reminder" + "tiap {interval}").
  *  2. Kartu "⚙️ Pengaturan Reminder": badge status AKTIF untuk Suara & Getar
  *     (gaya .toggle mockup), baris nada global + tombol Ganti (ToneField).
  * Fitur nyata ronde sebelumnya DIPERTAHANKAN di dalam struktur ini:
@@ -184,21 +184,16 @@ private fun openChannelSettings(context: Context, toneUri: String?) {
  */
 @Composable
 fun ReminderScreen(vm: AppViewModel) {
+    // RONDE 7 — layar ini kini bernama "Schedule Warning" dan isinya HANYA
+    // dua section mendatang. Kartu Pengaturan Reminder + Tes & Diagnostik
+    // PINDAH ke layar Pengaturan (SettingsScreen di file ini juga).
     val activities by vm.activities.collectAsState()
     val profile by vm.profile.collectAsState()
-    val context = LocalContext.current
-    var notifGranted by remember {
-        mutableStateOf(
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifGranted = it }
 
     // RONDE 4/5: SATU entri per kegiatan (kemunculan berikutnya saja),
     // urut waktu trigger; occurrence selesai tersingkir — dari domain.
-    // RONDE 6: daftar dipecah dua section (Todo Utama vs Checklist di bawah)
-    // dan jendela checklist mengikuti setting hari aktif user.
+    // RONDE 6: daftar dipecah dua section (Todo Utama vs Daily Reminder di bawah)
+    // dan jendela Daily Reminder mengikuti setting hari aktif user.
     val upcoming = remember(activities, profile.dayStartMinutes, profile.dayEndMinutes) {
         activities.nextReminders(
             LocalDateTime.now(), limit = 20,
@@ -214,7 +209,7 @@ fun ReminderScreen(vm: AppViewModel) {
         modifier = Modifier.fillMaxSize().background(Color(0xFFF4F9FB))
             .verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
-        Text("🔔 Reminder", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
+        Text("🔔 Schedule Warning", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(10.dp))
 
         // ===== RONDE 6: Section Todo Utama (sub-kartu terpisah) =====
@@ -235,13 +230,13 @@ fun ReminderScreen(vm: AppViewModel) {
         }
         Spacer(Modifier.height(12.dp))
 
-        // ===== RONDE 6: Section Checklist (sub-kartu terpisah) =====
+        // ===== RONDE 6: Section Daily Reminder (sub-kartu terpisah) =====
         SoftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("Mendatang — ✅ Checklist", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                Text("Mendatang — 😉 Daily Reminder", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
                 if (upcomingChecklists.isEmpty()) {
                     Text(
-                        "Tidak ada checklist terjadwal. Checklist ber-interval akan muncul di sini.",
+                        "Tidak ada Daily Reminder terjadwal. Daily Reminder ber-interval akan muncul di sini.",
                         fontSize = 12.5.sp, color = Color(0xFF70858E), modifier = Modifier.padding(top = 6.dp)
                     )
                 } else {
@@ -249,54 +244,6 @@ fun ReminderScreen(vm: AppViewModel) {
                         NextReminderRow(activity, date, time, today)
                     }
                 }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-
-        // ===== Kartu Pengaturan Reminder (mockup: badge AKTIF) =====
-        SoftCard(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text("⚙️ Pengaturan Reminder", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
-                Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Suara notifikasi", modifier = Modifier.weight(1f), fontSize = 13.5.sp)
-                    PastelPill("AKTIF", Color(0xFF58A97C), Color.White)
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Getar", modifier = Modifier.weight(1f), fontSize = 13.5.sp)
-                    PastelPill("AKTIF", Color(0xFF58A97C), Color.White)
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Izin Notifikasi", modifier = Modifier.weight(1f), fontSize = 13.5.sp)
-                    if (notifGranted) {
-                        PastelPill("AKTIF", Color(0xFF58A97C), Color.White)
-                    } else {
-                        PastelPill("BELUM", Color(0xFFFDE9E4), Color(0xFFA63E2F))
-                    }
-                }
-                if (!notifGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    Spacer(Modifier.height(8.dp))
-                    GradientButton(
-                        text = "Izinkan Notifikasi",
-                        onClick = { permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
-                        modifier = Modifier.fillMaxWidth(), mint = true
-                    )
-                }
-                Spacer(Modifier.height(12.dp))
-                Text("Nada Dering Reminder (global)", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Ink)
-                Spacer(Modifier.height(6.dp))
-                ToneField(
-                    currentUri = profile.globalToneUri, label = "Nada Dering Reminder",
-                    showDefaultOption = true
-                ) { uri, name ->
-                    vm.setGlobalTone(uri, name)
-                }
-                Spacer(Modifier.height(12.dp))
-                ReminderTestButtons(globalToneUri = profile.globalToneUri)
-                Spacer(Modifier.height(8.dp))
-                VibrationDiagnosticLine()
             }
         }
     }
@@ -437,6 +384,15 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
     val profile by vm.profile.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // RONDE 7 — izin notifikasi kini dikelola di sini (ikut kartu Pengaturan
+    // Reminder yang pindah dari layar Schedule Warning).
+    var notifGranted by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifGranted = it }
     var showThemeDialog by remember { mutableStateOf(false) }
     // RONDE 6: picker jendela hari aktif dari Pengaturan (selain layar Harian).
     var pickingWindow by remember { mutableStateOf<String?>(null) } // "start" | "end"
@@ -480,14 +436,56 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
         Spacer(Modifier.height(8.dp))
         SettingRow("👤 Profil & Personalisasi — Halo, ${profile.name}") { onNavigate(Screen.Profile) }
         SettingRow("🎨 Tema — ${profile.themeMode}") { showThemeDialog = true }
-        // RONDE 6: jendela hari aktif (slot Harian + jendela checklist).
+        // RONDE 6: jendela hari aktif (slot Harian + jendela Daily Reminder).
         SettingRow("🕐 Hari aktif mulai — %02d.%02d".format(profile.dayStartMinutes / 60, profile.dayStartMinutes % 60)) { pickingWindow = "start" }
         SettingRow("🕐 Hari aktif selesai — %02d.%02d".format(profile.dayEndMinutes / 60, profile.dayEndMinutes % 60)) { pickingWindow = "end" }
-        SettingRow("🔔 Notifikasi & Reminder") { onNavigate(Screen.Reminder) }
-        SettingRow("🎵 Nada Dering — ${profile.globalToneName}") { onNavigate(Screen.Reminder) }
+        SettingRow("🔔 Schedule Warning") { onNavigate(Screen.Reminder) }
+        // ===== RONDE 7: Kartu Pengaturan Reminder (PINDAHAN dari layar jadwal) =====
         SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("🧪 Tes Reminder", fontWeight = FontWeight.Bold, color = Ink)
+                Text("⚙️ Pengaturan Reminder", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Suara notifikasi", modifier = Modifier.weight(1f), fontSize = 13.5.sp)
+                    PastelPill("AKTIF", Color(0xFF58A97C), Color.White)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Getar", modifier = Modifier.weight(1f), fontSize = 13.5.sp)
+                    PastelPill("AKTIF", Color(0xFF58A97C), Color.White)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Izin Notifikasi", modifier = Modifier.weight(1f), fontSize = 13.5.sp)
+                    if (notifGranted) {
+                        PastelPill("AKTIF", Color(0xFF58A97C), Color.White)
+                    } else {
+                        PastelPill("BELUM", Color(0xFFFDE9E4), Color(0xFFA63E2F))
+                    }
+                }
+                if (!notifGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    Spacer(Modifier.height(8.dp))
+                    GradientButton(
+                        text = "Izinkan Notifikasi",
+                        onClick = { permLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                        modifier = Modifier.fillMaxWidth(), mint = true
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("Nada Dering Reminder (global) — ${profile.globalToneName}", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Ink)
+                Spacer(Modifier.height(6.dp))
+                ToneField(
+                    currentUri = profile.globalToneUri, label = "Nada Dering Reminder",
+                    showDefaultOption = true
+                ) { uri, name ->
+                    vm.setGlobalTone(uri, name)
+                }
+            }
+        }
+        // ===== RONDE 7: Kartu Tes & Diagnostik (PINDAHAN dari layar jadwal) =====
+        SoftCard(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text("🧪 Tes & Diagnostik Reminder", fontWeight = FontWeight.Bold, color = Ink)
                 Spacer(Modifier.height(8.dp))
                 ReminderTestButtons(globalToneUri = profile.globalToneUri)
                 Spacer(Modifier.height(8.dp))
@@ -500,7 +498,7 @@ fun SettingsScreen(vm: AppViewModel, onNavigate: (Screen) -> Unit) {
         SoftCard(modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text("Tentang", fontWeight = FontWeight.Bold, color = Ink)
-                Text("Todo Planner v1.0.4 — full lokal & offline.")
+                Text("Todo Planner v1.0.5 — full lokal & offline.")
             }
         }
     }
@@ -560,7 +558,7 @@ fun MenuScreen(onNavigate: (Screen) -> Unit) {
         "📆 Template Bulanan" to Screen.Monthly,
         "🌅 Template Tahunan" to Screen.Yearly,
         "🗓️ Kalender" to Screen.Calendar,
-        "🔔 Reminder" to Screen.Reminder,
+        "🔔 Schedule Warning" to Screen.Reminder,
         "📊 Progress / Statistik" to Screen.Stats,
         "⚙️ Pengaturan" to Screen.Settings,
         "👤 Profil & Personalisasi" to Screen.Profile,
