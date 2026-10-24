@@ -54,7 +54,7 @@ import id.rama.todoplanner.ui.components.activityColor
 import id.rama.todoplanner.ui.components.priorityColor
 import id.rama.todoplanner.ui.components.PhaseScenery
 import id.rama.todoplanner.ui.components.PastelPill
-import id.rama.todoplanner.ui.components.PriorityFadePill
+import id.rama.todoplanner.ui.components.PriorityNeonPill
 import id.rama.todoplanner.ui.components.RingProgress
 import id.rama.todoplanner.ui.components.SoftCard
 import id.rama.todoplanner.ui.theme.Ink
@@ -429,6 +429,9 @@ private fun UpcomingItem(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onCli
         }
         Spacer(Modifier.width(10.dp))
         Column(modifier = Modifier.weight(1f)) {
+            // RONDE 11: pill prioritas PINDAH ke baris judul, SEJAJAR di
+            // samping kanan label kategori (satu baris dengan judul +
+            // pill kategori) — bukan lagi baris sendiri di bawah waktu.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     occ.activity.displayTitle, fontWeight = FontWeight.SemiBold, fontSize = 14.sp,
@@ -438,6 +441,8 @@ private fun UpcomingItem(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onCli
                 )
                 Spacer(Modifier.width(6.dp))
                 CategoryPill(occ.activity.category, accent)
+                Spacer(Modifier.width(6.dp))
+                PriorityNeonPill(occ.activity.priority)
             }
             val end = occ.activity.endMinutes
             val timeText = if (end != null) {
@@ -445,13 +450,8 @@ private fun UpcomingItem(occ: Occurrence, onToggleDone: (Boolean) -> Unit, onCli
             } else {
                 Dates.formatTime(occ.activity.startMinutes)
             }
-            // RONDE 10: prioritas BUKAN lagi teks "Prioritas X" — jadi
-            // LABEL berlatar persis label kategori + efek FADE IN & OUT,
-            // teks hanya "Rendah"/"Sedang"/"Tinggi" (tanpa kata "Prioritas").
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("$timeText • ${occ.activity.category}", fontSize = 12.sp, color = Color(0xFF70858E))
-                Spacer(Modifier.width(6.dp))
-                PriorityFadePill(occ.activity.priority)
                 if (occ.done) {
                     val doneLabel = Dates.completedLabel(occ.completedAtMillis)
                     if (doneLabel.isNotBlank()) {

@@ -16,8 +16,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -153,16 +154,21 @@ fun annotatedWithPriority(prefix: String, priority: String, suffix: String = "")
     }
 
 /**
- * RONDE 10 — pill prioritas untuk card "Kegiatan Hari Ini": bentuknya
- * PERSIS label kategori ([CategoryPill]: latar warna 18% + teks versi
- * gelapnya), tapi dengan efek FADE IN & OUT — opacity berdenyut halus
- * berulang (bukan kedip kasar), supaya prioritas terasa "hidup" tanpa
- * mengganggu. Teks HANYA "Rendah"/"Sedang"/"Tinggi" (tanpa kata
- * "Prioritas"). Warna mengikuti pemetaan tetap ([priorityColor]).
- * Bila animator sistem mati (reduce motion), pill tampil statis.
+ * RONDE 11 — pill prioritas untuk card "Kegiatan Hari Ini" (MENGGANTIKAN
+ * PriorityFadePill ronde 10 — fade in & out DICABUT atas perintah Rama):
+ *  - LEBIH TERANG: latar = warna prioritas hampir penuh (bukan lagi
+ *    18% seperti label kategori yang membuat pill tampak redup), teks
+ *    putih tebal — jadi pill ini tidak lagi "tenggelam" di sebelah
+ *    label kategori.
+ *  - EFEK NEON FLICKER speed 1x: intensitas pill berkedip halus seperti
+ *    lampu neon (mayoritas terang penuh, diselingi dip singkat),
+ *    satu siklus 1000 ms berulang — bukan denyut fade lambat lagi.
+ *  - Teks HANYA "Rendah"/"Sedang"/"Tinggi" (tanpa kata "Prioritas").
+ *    Warna mengikuti pemetaan tetap ([priorityColor]).
+ * Bila animator sistem mati (reduce motion), pill tampil statis terang.
  */
 @Composable
-fun PriorityFadePill(priority: String) {
+fun PriorityNeonPill(priority: String) {
     val color = priorityColor(priority)
     val context = androidx.compose.ui.platform.LocalContext.current
     val animatorScale = try {
@@ -170,26 +176,44 @@ fun PriorityFadePill(priority: String) {
             context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f
         )
     } catch (e: Exception) { 1f }
-    val alpha: Float = if (animatorScale == 0f) {
+    val flicker: Float = if (animatorScale == 0f) {
         1f
     } else {
-        val transition = rememberInfiniteTransition(label = "priorityFade")
+        val transition = rememberInfiniteTransition(label = "priorityNeon")
         val animated by transition.animateFloat(
-            initialValue = 1f, targetValue = 0.45f, label = "priorityFadeAlpha",
+            initialValue = 1f, targetValue = 1f, label = "priorityNeonFlicker",
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1400),
-                repeatMode = RepeatMode.Reverse
+                animation = androidx.compose.animation.core.keyframes {
+                    durationMillis = 1000
+                    1f at 0
+                    0.55f at 100
+                    1f at 150
+                    0.70f at 300
+                    1f at 360
+                    0.85f at 600
+                    1f at 650
+                    1f at 1000
+                },
+                repeatMode = RepeatMode.Restart
             )
         )
         animated
     }
+    // Latar hampir penuh (alpha 0.92) + teks putih: jauh lebih terang
+    // dari label kategori (18%). Flicker memodulasi keduanya serentak.
     Box(
-        modifier = Modifier.clip(RoundedCornerShape(20.dp))
-            .background(color.copy(alpha = 0.18f * alpha + 0.06f))
+        modifier = Modifier
+            .shadow(
+                elevation = 8.dp, shape = RoundedCornerShape(20.dp), clip = false,
+                ambientColor = color.copy(alpha = 0.45f * flicker),
+                spotColor = color.copy(alpha = 0.65f * flicker)
+            )
+            .clip(RoundedCornerShape(20.dp))
+            .background(color.copy(alpha = 0.92f * flicker + 0.08f))
             .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Text(
-            priority, color = darkenColor(color).copy(alpha = 0.55f + 0.45f * alpha),
+            priority, color = Color.White.copy(alpha = 0.55f + 0.45f * flicker),
             fontSize = 10.5.sp, fontWeight = FontWeight.Bold, maxLines = 1
         )
     }
